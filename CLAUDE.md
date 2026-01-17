@@ -51,6 +51,14 @@ if args.cont:
         await queue.put(task)
 ```
 
+### planner implementation
+uses ClaudeCodeClient to parse design files:
+- calls `claude -p <prompt> --model sonnet` with JSON output request
+- prompt asks for actionable tasks with priority/complexity
+- parses JSON array of tasks
+- falls back to simple line-based parsing on error
+- 60s timeout for parsing
+
 ### worker implementation
 uses ClaudeCodeClient (claude_code.py):
 - client isolated in claude_code.py for reuse as library
@@ -67,7 +75,7 @@ uses ClaudeCodeClient (claude_code.py):
 
 **no queue persistence**: queue regenerated from pending tasks on continuation. only task state persisted to disk.
 
-**single planner at startup**: planner runs once at startup to break design into tasks, then exits. no continuous planning, no cycles.
+**single planner at startup**: planner runs once at startup to break design into tasks using Claude CLI, then exits. no continuous planning, no cycles.
 
 **async locks everywhere**: state manager uses asyncio.Lock for all mutations. no sync primitives in async code.
 
