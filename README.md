@@ -59,7 +59,8 @@ goal-oriented execution:
    - claude code has full tool access (read/write files, bash, etc)
 3. judge polls completion every 5s, exits when done
 
-state persisted to ~/.demiurg/data (tasks.json, work.json).
+state persisted to ./.demiurg/ (tasks.json, work.json, log/).
+each project has isolated state - no global mixing.
 
 see SPEC.md for specification, ARCHITECTURE.md for architecture, blog.md for background.
 

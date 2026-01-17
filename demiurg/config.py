@@ -39,11 +39,13 @@ class Config:
         except ValueError as e:
             raise RuntimeError(f"invalid config value: {e}") from e
 
+        target_dir = os.getenv("TARGET_DIR", ".")
+
         return Config(
             num_planners=num_planners,
             num_workers=num_workers,
-            target_dir=os.getenv("TARGET_DIR", "."),
-            log_dir=os.getenv("LOG_DIR", str(home / ".demiurg" / "log")),
-            data_dir=os.getenv("DATA_DIR", str(home / ".demiurg" / "data")),
+            target_dir=target_dir,
+            log_dir=os.getenv("LOG_DIR", f"{target_dir}/.demiurg/log"),
+            data_dir=os.getenv("DATA_DIR", f"{target_dir}/.demiurg"),
             port=port,
         )

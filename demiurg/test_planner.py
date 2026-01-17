@@ -16,14 +16,14 @@ from demiurg.types_ import TaskStatus, WorkState
 
 
 @pytest.fixture
-def config():
+def config(tmp_path):
     """create test config"""
     return Config(
         num_planners=1,
         num_workers=1,
-        target_dir=".",
-        log_dir="/tmp/test",
-        data_dir="/tmp/test",
+        target_dir=str(tmp_path),
+        log_dir=str(tmp_path / ".demiurg" / "log"),
+        data_dir=str(tmp_path / ".demiurg"),
         port=8080,
     )
 

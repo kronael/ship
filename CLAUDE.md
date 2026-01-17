@@ -118,11 +118,13 @@ transitions:
 - running → pending (continuation after interrupt)
 
 ### state persistence
-all state at ~/.demiurg/data/:
+all state at ./.demiurg/ (project-local):
 - tasks.json: array of all tasks with metadata
 - work.json: design_file, goal_text, is_complete
+- log/: execution logs
 
 state written on every change (within lock).
+each project has isolated state (no global mixing).
 
 ### key files
 - `__main__.py`: entry point, orchestrates planner/workers/judge
@@ -151,9 +153,12 @@ state written on every change (within lock).
 all optional (with defaults):
 - NUM_WORKERS=4
 - NUM_PLANNERS=2 (unused in current implementation)
-- TARGET_DIR=.
-- LOG_DIR=~/.demiurg/log
-- DATA_DIR=~/.demiurg/data
+- TARGET_DIR=. (working directory)
+- LOG_DIR={TARGET_DIR}/.demiurg/log
+- DATA_DIR={TARGET_DIR}/.demiurg
 - PORT=8080 (unused in current implementation)
+
+state is project-local by default (isolated per project).
+all state in ./.demiurg/ (gitignored).
 
 note: NUM_PLANNERS exists in config.py but is NOT used in __main__.py (only used in old main.py).
