@@ -52,12 +52,14 @@ if args.cont:
 ```
 
 ### worker implementation
-calls claude code CLI directly (worker.py:_do_work()):
-- spawns `claude -p <task.description> --model sonnet`
+uses ClaudeCodeClient (claude_code.py):
+- client isolated in claude_code.py for reuse as library
+- spawns `claude -p <prompt> --model sonnet`
 - runs in cfg.target_dir (current working directory)
-- 30s timeout per task
+- 30s timeout per task (configurable in client)
 - claude code has full tool access (read/write files, bash, etc)
 - returns stdout from claude CLI
+- worker.py:_do_work() is now single line: self.claude.execute()
 
 ## shocking patterns
 
@@ -118,9 +120,10 @@ state written on every change (within lock).
 - `__main__.py`: entry point, orchestrates planner/workers/judge
 - `config.py`: load config from env/.demiurg files
 - `state.py`: StateManager with async locks for task/work persistence
-- `types.py`: Task, TaskStatus, WorkState dataclasses
+- `types_.py`: Task, TaskStatus, WorkState dataclasses
 - `planner.py`: parse design file into tasks (runs once)
-- `worker.py`: execute tasks from queue (mocked, needs LLM integration)
+- `worker.py`: execute tasks from queue using ClaudeCodeClient
+- `claude_code.py`: isolated client for calling claude code CLI (reusable)
 - `judge.py`: poll for completion every 5s, exit when done
 
 ## package structure

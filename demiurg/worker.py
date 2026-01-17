@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from demiurg.claude_code import ClaudeCodeClient
 from demiurg.config import Config
 from demiurg.state import StateManager
 from demiurg.types_ import Task, TaskStatus
@@ -13,6 +14,7 @@ class Worker:
         self.worker_id = worker_id
         self.cfg = cfg
         self.state = state
+        self.claude = ClaudeCodeClient(model="sonnet", cwd=cfg.target_dir)
 
     async def run(self, queue: asyncio.Queue[Task]) -> None:
         """process tasks from queue until cancelled"""
@@ -61,25 +63,4 @@ class Worker:
 
     async def _do_work(self, task: Task) -> str:
         """execute task by calling claude code CLI"""
-        proc = await asyncio.create_subprocess_exec(
-            "claude",
-            "-p",
-            task.description,
-            "--model",
-            "sonnet",
-            cwd=self.cfg.target_dir,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-
-        stdout, stderr = await proc.communicate()
-
-        if proc.returncode != 0:
-            error = stderr.decode().strip() or stdout.decode().strip()
-            raise RuntimeError(f"claude CLI failed: {error}")
-
-        output = stdout.decode().strip()
-        if not output:
-            raise RuntimeError("claude CLI returned empty output")
-
-        return output
+        return await self.claude.execute(task.description, timeout=30)
