@@ -32,24 +32,26 @@ class Worker:
             raise
 
     async def _execute(self, task: Task) -> None:
-        logging.info(f"{self.worker_id} executing: {task.description}")
+        print(f"\n[{self.worker_id}] {task.description}")
 
         await self.state.update_task(task.id, TaskStatus.RUNNING)
 
         try:
-            async with asyncio.timeout(30):
+            async with asyncio.timeout(60):
                 result = await self._do_work(task)
 
             await self.state.update_task(
                 task.id, TaskStatus.COMPLETED, result=result
             )
+            print(f"[{self.worker_id}] ✓ completed")
             logging.info(f"{self.worker_id} completed: {task.description}")
 
         except TimeoutError:
-            error_msg = "task timeout after 30s"
+            error_msg = "task timeout after 60s"
             await self.state.update_task(
                 task.id, TaskStatus.FAILED, error=error_msg
             )
+            print(f"[{self.worker_id}] ✗ timeout")
             logging.warning(f"{self.worker_id} {error_msg}: {task.description}")
 
         except Exception as e:
@@ -57,10 +59,16 @@ class Worker:
             await self.state.update_task(
                 task.id, TaskStatus.FAILED, error=error_msg
             )
+            print(f"[{self.worker_id}] ✗ {error_msg}")
             logging.error(
                 f"{self.worker_id} failed: {task.description}: {error_msg}"
             )
 
     async def _do_work(self, task: Task) -> str:
-        """execute task by calling claude code CLI"""
-        return await self.claude.execute(task.description, timeout=30)
+        """execute task by calling claude code CLI with streaming output"""
+        output_lines = []
+        async for line in self.claude.execute_stream(task.description, timeout=60):
+            if line.strip():
+                print(f"  {line}")
+            output_lines.append(line)
+        return "\n".join(output_lines)

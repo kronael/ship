@@ -91,14 +91,25 @@ async def main() -> None:
     for task in pending:
         await queue.put(task)
 
-    workers = [Worker(f"worker-{i}", cfg, state) for i in range(cfg.num_workers)]
+    all_tasks = await state.get_all_tasks()
+    total = len(all_tasks)
+    completed = len([t for t in all_tasks if t.status.value == "completed"])
+
+    # adjust worker count to task count (no more workers than tasks)
+    num_workers = min(cfg.num_workers, len(pending))
+    if num_workers < cfg.num_workers:
+        logging.info(f"reducing workers from {cfg.num_workers} to {num_workers} (only {len(pending)} tasks)")
+
+    print(f"progress: {completed}/{total} tasks completed")
+    print(f"workers: {num_workers}\n")
+
+    workers = [Worker(f"worker-{i}", cfg, state) for i in range(num_workers)]
     judge = Judge(state)
 
     worker_tasks = [asyncio.create_task(w.run(queue)) for w in workers]
     judge_task = asyncio.create_task(judge.run())
 
     logging.info("system running")
-    print("working...")
 
     await judge_task
 
@@ -107,8 +118,12 @@ async def main() -> None:
 
     await asyncio.gather(*worker_tasks, return_exceptions=True)
 
+    final_tasks = await state.get_all_tasks()
+    completed = len([t for t in final_tasks if t.status.value == "completed"])
+    failed = len([t for t in final_tasks if t.status.value == "failed"])
+
     logging.info("goal satisfied")
-    print("goal satisfied")
+    print(f"\ngoal satisfied: {completed}/{total} completed, {failed} failed")
 
 
 def run() -> None:
