@@ -103,6 +103,7 @@ not suitable for:
 
 - runs until done, then exits (not daemon)
 - planner runs once at startup
-- workers timeout after 30s per task
+- workers timeout after 60s per task
 - queue regenerated from pending tasks on continuation
 - state isolated per project (./.demiurg/)
+- worker count auto-adjusts to task count (no idle workers)

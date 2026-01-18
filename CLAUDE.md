@@ -161,6 +161,30 @@ no API key required - uses authenticated claude code CLI session.
 state is project-local by default (isolated per project).
 all state in ./.demiurg/ (gitignored).
 
+## standard documentation files
+
+every project should have:
+
+**onepager.md**: marketing narrative/elevator pitch
+- what the software does
+- what problem it solves
+- why it's needed, unique, and valuable
+- comparison with alternatives
+- 1-page, non-technical audience
+
+**blog.md**: technical narrative for publication
+- what we built and why
+- interesting lessons learned (not mundane)
+- technical challenges and solutions
+- surprising discoveries
+- things we'd change
+- ~800-1500 words, technical audience
+
+**README.md**: user-facing documentation
+**CLAUDE.md**: development patterns (<200 lines)
+**ARCHITECTURE.md**: technical design
+**SPEC.md**: goals and requirements
+
 ## commit messages
 
 format: `[section] message`
