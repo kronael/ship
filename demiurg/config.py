@@ -18,19 +18,11 @@ class Config:
 
     @staticmethod
     def load() -> Config:
-        """load config from env, ./.demiurg, ~/.demiurg/config"""
-        home = Path.home()
-        global_config = home / ".demiurg" / "config"
-        local_config = Path(".demiurg")
-
-        try:
-            if global_config.exists():
-                load_dotenv(global_config)
-
-            if local_config.exists():
-                load_dotenv(local_config, override=True)
-        except Exception as e:
-            raise RuntimeError(f"failed to load config files: {e}") from e
+        """load config from .env file and environment variables"""
+        # load from local .env if it exists (env vars override)
+        env_file = Path(".env")
+        if env_file.exists():
+            load_dotenv(env_file)
 
         try:
             num_planners = int(os.getenv("NUM_PLANNERS", "2"))

@@ -38,10 +38,10 @@ if task.status is TaskStatus.PENDING:  # use 'is' not ==
 - ALWAYS copy data structures before returning (prevent mutation)
 
 ### config loading
-- uses .env format (not TOML), loaded via python-dotenv
-- loads global (~/.demiurg/config) then local (./.demiurg), local overrides
-- environment variables override everything
+- loads from ./.env if exists (via python-dotenv)
+- environment variables override .env settings
 - all settings optional with defaults
+- no global config files (project-local .env only)
 - no API key needed (uses claude code CLI session)
 
 ### continuation flow
@@ -106,7 +106,7 @@ uses ClaudeCodeClient (claude_code.py):
 10. main() cancels workers and exits
 
 ### task states
-explicit enum in types.py:
+explicit enum in types_.py:
 - PENDING: created, not started
 - RUNNING: worker executing
 - COMPLETED: finished successfully
@@ -129,9 +129,9 @@ each project has isolated state in its own ./.demiurg/ directory.
 
 ### key files
 - `__main__.py`: entry point, orchestrates planner/workers/judge
-- `config.py`: load config from .env files (global/local) + environment
+- `config.py`: load config from environment variables
 - `state.py`: StateManager with async locks for task/work persistence
-- `types.py`: Task, TaskStatus, WorkState dataclasses
+- `types_.py`: Task, TaskStatus, WorkState dataclasses (underscore avoids masking built-in types)
 - `planner.py`: parse design file into tasks (runs once)
 - `worker.py`: execute tasks from queue using ClaudeCodeClient
 - `claude_code.py`: isolated client for calling claude code CLI (reusable)
@@ -144,14 +144,9 @@ each project has isolated state in its own ./.demiurg/ directory.
 - internal module: `demiurg/` (no __init__.py needed)
 - entry point: `demiurg.__main__:run`
 
-## config precedence
+## configuration
 
-.env format (not TOML), loaded via python-dotenv:
-
-1. defaults (hardcoded in config.py)
-2. ~/.demiurg/config (global .env file)
-3. ./.demiurg (local project .env file)
-4. environment variables (highest)
+loads from ./.env (project-local) + environment variables:
 
 all optional (with defaults):
 - NUM_WORKERS=4

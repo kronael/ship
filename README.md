@@ -64,16 +64,20 @@ runs until goal satisfied, then exits. no daemon, no http server.
 
 ## configuration
 
-loads from (highest priority first):
-1. environment variables
-2. ./.demiurg (local project)
-3. ~/.demiurg/config (global)
+create `.env` in project root (optional):
 
-.env format (all optional):
 ```bash
 NUM_WORKERS=4
 TARGET_DIR=.
 ```
+
+or set environment variables in shell (overrides .env):
+```bash
+export NUM_WORKERS=8
+demiurg design.txt
+```
+
+all settings optional with defaults. see `.env.example` for full list.
 
 ## architecture
 
