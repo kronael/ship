@@ -86,12 +86,11 @@ uses ClaudeCodeClient (claude_code.py):
 ### entry point
 - `demiurg.__main__:run` is the entry point (defined in pyproject.toml)
 - `__main__.py` contains the actual implementation
-- `main.py` and `server.py` exist but are NOT used (old code, ignore them)
 
 ### execution flow
 1. parse args (design file path or -c for continuation)
 2. load config from env/.demiurg files
-3. init state manager (loads from ~/.demiurg/data)
+3. init state manager (loads from ./.demiurg/)
 4. if new run:
    - planner.plan_once() parses design file into tasks
    - state.init_work() creates work.json
@@ -105,7 +104,7 @@ uses ClaudeCodeClient (claude_code.py):
 10. main() cancels workers and exits
 
 ### task states
-explicit enum in types.py:
+explicit enum in types_.py:
 - PENDING: created, not started
 - RUNNING: worker executing
 - COMPLETED: finished successfully
@@ -118,13 +117,13 @@ transitions:
 - running → pending (continuation after interrupt)
 
 ### state persistence
-all state at ./.demiurg/ (project-local):
+all state at ./.demiurg/ (project-local, not global):
 - tasks.json: array of all tasks with metadata
 - work.json: design_file, goal_text, is_complete
 - log/: execution logs
 
 state written on every change (within lock).
-each project has isolated state (no global mixing).
+each project has isolated state in its own ./.demiurg/ directory.
 
 ### key files
 - `__main__.py`: entry point, orchestrates planner/workers/judge
@@ -158,7 +157,7 @@ all optional (with defaults):
 - DATA_DIR={TARGET_DIR}/.demiurg
 - PORT=8080 (unused in current implementation)
 
+no API key required - uses authenticated claude code CLI session.
+
 state is project-local by default (isolated per project).
 all state in ./.demiurg/ (gitignored).
-
-note: NUM_PLANNERS exists in config.py but is NOT used in __main__.py (only used in old main.py).

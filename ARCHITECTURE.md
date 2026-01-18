@@ -18,7 +18,7 @@ design.txt → Planner → [task, task, task] → Queue
 
 ### planner
 
-reads design file, breaks into tasks (currently mocked).
+reads design file, breaks into tasks using claude code CLI.
 
 runs once at startup. generates tasks with:
 - unique id (uuid)
@@ -26,9 +26,12 @@ runs once at startup. generates tasks with:
 - empty files list (populated by worker)
 - status (pending)
 
-adds tasks to state and submits to queue.
+uses ClaudeCodeClient to parse design file:
+- calls `claude -p <prompt> --model sonnet` with JSON output request
+- parses JSON array of tasks with descriptions
+- falls back to simple line-based parsing on error
 
-TODO: call claude code CLI to parse design file into tasks.
+adds tasks to state and submits to queue.
 
 ### queue
 
@@ -67,7 +70,7 @@ when complete:
 
 ### state manager
 
-persists to ~/.demiurg/data as json files:
+persists to ./.demiurg/ as json files (project-local):
 - tasks.json: array of all tasks with metadata
 - work.json: design_file, goal_text, is_complete flag
 
@@ -92,7 +95,7 @@ loads existing state on startup for continuation.
 
 ## task lifecycle
 
-states (explicit enum in types.py):
+states (explicit enum in types_.py):
 - pending: created, not yet started
 - running: worker executing
 - completed: finished successfully
@@ -173,25 +176,25 @@ work.json:
 ## configuration precedence
 
 1. defaults (hardcoded in config.py)
-2. ~/.demiurg/config (global .env file)
-3. ./.demiurg (local project .env file)
+2. ~/.demiurg/config (global .env file, optional)
+3. ./.demiurg (local project .env file, optional)
 4. environment variables (highest priority)
 
 uses python-dotenv to load .env files.
 
 defaults (all optional):
 - num_workers: 4
-- num_planners: 2 (unused)
+- num_planners: 2 (unused in current implementation)
 - target_dir: "."
-- log_dir: ~/.demiurg/log
-- data_dir: ~/.demiurg/data
-- port: 8080 (unused)
+- log_dir: {target_dir}/.demiurg/log
+- data_dir: {target_dir}/.demiurg
+- port: 8080 (unused in current implementation)
 
 ## logging
 
 unix format: "2026/01/16 08:00:00"
 
-logs to: ~/.demiurg/log/demiurg.log
+logs to: {target_dir}/.demiurg/log/demiurg.log (project-local)
 
 lowercase messages, capitalize error names only.
 
@@ -209,9 +212,10 @@ compared to cursor's blog post, this implementation omits:
 - multi-node coordination
 
 implementation status:
-- workers: call claude code CLI (full implementation)
-- planner: mocked (TODO: call claude code CLI to parse design file)
-- judge: complete
-- state: complete
+- workers: fully implemented using claude code CLI
+- planner: fully implemented using claude code CLI with fallback parsing
+- judge: fully implemented
+- state: fully implemented
+- claude_code.py: reusable client for calling claude code CLI
 
 these simplifications make the system suitable for learning the pattern, not production use.

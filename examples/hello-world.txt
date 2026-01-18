@@ -1,0 +1,4 @@
+- Create hello.py file
+- Add main function that prints "Hello, World!"
+- Add if __name__ == "__main__" guard
+- Make file executable

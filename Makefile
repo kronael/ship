@@ -6,7 +6,7 @@ build:
 	uv sync
 
 install:
-	uv pip install -e .
+	uv tool install --editable .
 
 run:
 	uv run python -m demiurg
@@ -27,4 +27,4 @@ image:
 clean:
 	rm -rf __pycache__ demiurg/__pycache__
 	rm -rf .pytest_cache
-	rm -rf ~/.demiurg/data ~/.demiurg/log
+	rm -rf .demiurg/

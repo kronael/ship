@@ -7,7 +7,7 @@ import uuid
 from demiurg.claude_code import ClaudeCodeClient
 from demiurg.config import Config
 from demiurg.state import StateManager
-from demiurg.types_ import Task, TaskStatus
+from demiurg.types import Task, TaskStatus
 
 
 class Planner:

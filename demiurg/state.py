@@ -5,7 +5,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from demiurg.types_ import Task, TaskStatus, WorkState
+from demiurg.types import Task, TaskStatus, WorkState
 
 
 class StateManager:

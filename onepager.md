@@ -1,45 +1,32 @@
 # demiurg: autonomous coding agent
 
-## what it is
+Reads design file, breaks into tasks, executes in parallel using Claude Code CLI, exits when complete.
 
-goal-oriented code generation agent that reads a design file, breaks it into tasks, executes them in parallel, and exits when done. no daemon, no http server, no manual intervention.
+## what it does
 
-## why it matters
+- reads design.txt with bullet-point tasks
+- planner generates task breakdown using Claude
+- 4 workers (configurable) execute tasks in parallel
+- each worker spawns `claude -p <task> --model sonnet`
+- judge polls every 5s, exits when all tasks complete
+- state persisted to ./.demiurg/ (project-local)
 
-**traditional approaches fail at scale:**
-- manual coding: slow, error-prone, doesn't scale
-- chatbots: require constant supervision, lose context, can't parallelize
-- code assistants: need hand-holding through each step
+## key features
 
-**demiurg runs autonomously:**
-- reads design.txt describing what you want
-- breaks goal into concrete tasks using claude
-- executes 4 tasks in parallel (configurable)
-- each task gets full claude code access (read/write files, bash, web)
-- judge monitors completion, exits when goal satisfied
-- state persisted to ./.demiurg/ (resume anytime with -c)
-
-## value proposition
-
-**save 10-100x time on boilerplate:**
-- API server? write design.txt with endpoints, run demiurg, done
-- migration script? describe the transformation, run demiurg, done
-- test suite? specify test cases, run demiurg, done
-
-**true parallelization:**
-- 4 workers executing simultaneously (not sequential chat)
-- tasks run independently, state isolated
-- no coordination overhead, no context switching
+**parallel execution:**
+- 4 workers run simultaneously (configurable)
+- tasks run independently without coordination
+- no shared locks between workers
 
 **project isolation:**
-- each project has ./.demiurg/ state (tasks.json, work.json, log/)
-- run multiple demiurg instances on different projects simultaneously
-- no global state mixing, no conflicts
+- each project has ./.demiurg/ state directory
+- multiple demiurg instances can run on different projects
+- no global state mixing
 
-**continuation built-in:**
-- ctrl-c? run `demiurg -c` to resume
-- crashed? tasks automatically reset from running → pending
-- no lost work, no manual recovery
+**continuation:**
+- `demiurg -c` resumes from checkpoint
+- running tasks reset to pending on restart
+- no lost work on interruption
 
 ## how it works
 
@@ -66,12 +53,12 @@ demiurg design.txt
 
 ## comparison
 
-| approach | time | parallelization | supervision | state |
-|----------|------|-----------------|-------------|-------|
-| manual coding | days | none (one brain) | constant | mental |
-| chatgpt | hours | none (sequential) | constant | lost after session |
-| cursor | hours | none (one task at a time) | per-task | project files |
-| **demiurg** | **minutes** | **4 workers** | **zero** | **./.demiurg/** |
+| approach | parallelization | supervision | state persistence |
+|----------|-----------------|-------------|-------------------|
+| manual coding | none | constant | none |
+| chatgpt | none (sequential) | constant | none |
+| cursor | none (one task at a time) | per-task | project files |
+| demiurg | 4 workers | none (runs to completion) | ./.demiurg/ |
 
 ## architecture
 
@@ -85,7 +72,7 @@ pattern proven at scale by cursor, implemented for command-line use.
 ## requirements
 
 - claude code CLI installed (`claude --version`)
-- python 3.13+
+- python 3.12+
 - that's it
 
 ## installation
@@ -99,33 +86,23 @@ make install
 demiurg design.txt
 ```
 
-## when to use
+## use cases
 
-**perfect for:**
 - boilerplate generation (APIs, CLIs, scripts)
 - migrations and transformations
 - test suite creation
 - documentation generation
 - repetitive coding tasks
 
-**not for:**
+not suitable for:
 - creative problem solving (use claude code directly)
-- debugging complex issues (use IDE)
-- learning new concepts (use chatgpt)
+- debugging (use IDE)
 - small one-off changes (edit manually)
 
-## shocking truths
+## implementation details
 
-- runs until done, then exits (not a long-running service)
-- planner runs once at startup (no continuous planning)
-- workers timeout after 30s per task (forces atomic tasks)
-- queue regenerated from pending tasks on continuation (no queue persistence)
-- state isolated per project (no global ~/.demiurg mixing)
-
-## bottom line
-
-demiurg turns "I need to build X" into a design.txt file and walks away while 4 claude instances build it in parallel. no supervision, no context loss, no manual recovery.
-
-**time saved = (hours of manual coding) - (minutes writing design.txt)**
-
-typically 10-100x ROI on boilerplate. higher for larger projects.
+- runs until done, then exits (not daemon)
+- planner runs once at startup
+- workers timeout after 30s per task
+- queue regenerated from pending tasks on continuation
+- state isolated per project (./.demiurg/)

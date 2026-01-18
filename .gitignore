@@ -1,8 +1,38 @@
-main
+# build artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+uv.lock
+
+# project state
+.demiurg/
 log/
 tmp/
 data/
 *.log
-__pycache__/
-*.pyc
-.demiurg/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# OS
+.DS_Store
+Thumbs.db
+test-project/

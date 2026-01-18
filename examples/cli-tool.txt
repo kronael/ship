@@ -1,0 +1,8 @@
+- Create pyproject.toml with click dependency
+- Create cli.py with click command group
+- Add 'init' command that creates config.json
+- Add 'run' command that reads config.json and prints settings
+- Add 'clean' command that removes config.json
+- Add --verbose flag to all commands
+- Write tests for each command
+- Add setuptools entry point for 'mytool' command

@@ -33,11 +33,12 @@ goal-oriented execution: runs until satisfied, then exits (not a daemon).
 
 ### state persistence
 
-- all state stored as json files at ~/.demiurg/data
+- all state stored as json files at ./.demiurg/ (project-local)
 - tasks.json contains all task metadata
 - work.json contains design_file, goal_text, is_complete flag
 - state written on every change
 - state loaded on startup
+- each project has isolated state directory
 
 ### concurrency
 
@@ -51,14 +52,14 @@ goal-oriented execution: runs until satisfied, then exits (not a daemon).
 
 - .env config files (not toml)
 - precedence: env vars > ./.demiurg > ~/.demiurg/config
-- defaults for all settings except CLAUDE_API_KEY
-- validation on load (raises RuntimeError if key missing)
+- all settings have defaults (no required API keys)
+- uses claude code CLI session for authentication
 
 ### logging
 
 - unix timestamp format (2026/01/16 08:00:00)
 - lowercase messages
-- logs to ~/.demiurg/log/demiurg.log (not stdout)
+- logs to ./.demiurg/log/demiurg.log (project-local)
 - configurable log directory
 
 ## constraints
@@ -66,8 +67,8 @@ goal-oriented execution: runs until satisfied, then exits (not a daemon).
 - single node only (no distributed coordination)
 - in-memory queue (regenerated from state)
 - python with asyncio (not Go)
-- mock workers (no llm integration yet)
-- no git operations
+- uses claude code CLI (not direct API calls)
+- no git operations (workers use claude code CLI which has git access)
 - no sub-planner spawning
 - no conflict resolution
 - no task retry logic
@@ -78,10 +79,10 @@ goal-oriented execution: runs until satisfied, then exits (not a daemon).
 - production deployment
 - horizontal scaling
 - high availability
-- real code analysis (workers mocked)
-- version control integration
+- direct LLM API integration (uses claude code CLI instead)
+- version control integration (relies on claude code CLI git access)
 - web ui
 - metrics collection
 - observability platform integration
 
-this is a learning implementation, not production system.
+this is a demonstration implementation for learning the planner-worker-judge pattern.

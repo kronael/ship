@@ -12,7 +12,7 @@ import pytest
 from demiurg.config import Config
 from demiurg.planner import Planner
 from demiurg.state import StateManager
-from demiurg.types_ import TaskStatus, WorkState
+from demiurg.types import TaskStatus, WorkState
 
 
 @pytest.fixture

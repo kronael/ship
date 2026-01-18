@@ -1,0 +1,7 @@
+- Create pyproject.toml with fastapi and uvicorn dependencies
+- Create main.py with FastAPI app instance
+- Add GET /health endpoint that returns {"status": "healthy"}
+- Add GET /api/users endpoint with pagination (limit, offset query params)
+- Add POST /api/users endpoint with JSON validation (name, email required)
+- Write pytest tests for all endpoints
+- Add OpenAPI documentation strings to all endpoints
