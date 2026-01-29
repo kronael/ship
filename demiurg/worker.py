@@ -15,7 +15,10 @@ class Worker:
         self.worker_id = worker_id
         self.cfg = cfg
         self.state = state
-        self.claude = ClaudeCodeClient(model="sonnet", cwd=cfg.target_dir)
+        self.claude = ClaudeCodeClient(
+            model="sonnet",
+            max_turns=cfg.max_turns,
+        )
 
     async def run(self, queue: asyncio.Queue[Task]) -> None:
         """process tasks from queue until cancelled"""
@@ -72,7 +75,7 @@ class Worker:
     async def _do_work(self, task: Task) -> str:
         """execute task by calling claude code CLI with streaming output"""
         output_lines = []
-        async for line in self.claude.execute_stream(task.description, timeout=60):
+        async for line in self.claude.execute_stream(task.description, timeout=self.cfg.task_timeout):
             if line.strip():
                 print(f"  {line}")
             output_lines.append(line)

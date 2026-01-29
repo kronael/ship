@@ -47,13 +47,13 @@ fetches tasks from queue, executes them, updates state.
 
 execution flow:
 1. mark task as running
-2. spawn `claude -p <task.description> --model sonnet` in TARGET_DIR
+2. spawn `claude -p <task.description> --model sonnet` in current directory
 3. claude code has full tool access (read/write files, bash, grep, etc)
 4. mark task as completed with claude's stdout
 
 on error: mark task as failed with error message.
 
-30s timeout per task.
+120s timeout per task (configurable via TASK_TIMEOUT or -t flag).
 
 workers run independently - no inter-worker communication.
 
@@ -184,17 +184,16 @@ no global config files - all config is project-local.
 
 defaults (all optional):
 - num_workers: 4
-- num_planners: 2 (unused in current implementation)
-- target_dir: "."
-- log_dir: {target_dir}/.demiurg/log
-- data_dir: {target_dir}/.demiurg
-- port: 8080 (unused in current implementation)
+- max_turns: 5 (agentic turns per task)
+- task_timeout: 120 (seconds)
+- log_dir: .demiurg/log
+- data_dir: .demiurg
 
 ## logging
 
 unix format: "Jan 18 10:34:26"
 
-logs to: {target_dir}/.demiurg/log/demiurg.log (project-local)
+logs to: .demiurg/log/demiurg.log (project-local)
 
 lowercase messages, capitalize error names only.
 

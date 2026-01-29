@@ -3,30 +3,22 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 
-> **[→ view presentation](onepager.html)** - beautiful visual overview with mythological context and jokes
-
 autonomous coding agent using planner-worker-judge pattern.
 
 implements [cursor's battle-tested architecture](https://cursor.com/blog/scaling-agents) on the command line.
-they proved it scales. we made it portable. now you can vacation while your code writes itself.
 
-## quick example
+## quick start
 
 ```bash
 # create design file
-cat > design.txt <<EOF
+cat > SPEC.md <<EOF
 - Create hello.py with main function
 - Add greeting message "Hello from demiurg!"
 - Make file executable
 EOF
 
-# run demiurg
-uvx github.com/kronael/demiurg design.txt
-
-# demiurg will:
-# 1. parse design.txt into tasks
-# 2. execute tasks in parallel using Claude Code
-# 3. exit when complete
+# run demiurg (reads SPEC.md by default)
+demiurg
 
 # result: working hello.py created automatically
 python hello.py  # Hello from demiurg!
@@ -36,29 +28,42 @@ python hello.py  # Hello from demiurg!
 
 ```bash
 # run directly
-uvx github.com/kronael/demiurg design.txt
+uvx github.com/kronael/demiurg
 
 # or install
 make install
-demiurg design.txt
+demiurg
 ```
 
 ## usage
 
 ```bash
-# run on design file
-demiurg design.txt
+# run with default SPEC.md
+demiurg
+
+# specify design file
+demiurg -f spec.txt
+demiurg spec.txt       # positional also works
 
 # continue interrupted work
 demiurg -c
 
-# design file format (plain text)
-- Create function foo()
-- Add tests for foo()
-- Document foo()
+# tune execution
+demiurg -w 8           # 8 parallel workers (default: 4)
+demiurg -t 300         # 5 min timeout per task (default: 120s)
+demiurg -m 10          # 10 max turns per task (default: 5)
 ```
 
-runs until goal satisfied, then exits. no daemon, no http server.
+### CLI options
+
+| Flag | Long | Description | Default |
+|------|------|-------------|---------|
+| | | design file (positional) | SPEC.md |
+| -f | --file | design file (like make -f) | SPEC.md |
+| -c | --continue | resume from last run | - |
+| -w | --workers | parallel workers | 4 |
+| -t | --timeout | task timeout (seconds) | 120 |
+| -m | --max-turns | max agentic turns per task | 5 |
 
 ## requirements
 
@@ -71,16 +76,11 @@ create `.env` in project root (optional):
 
 ```bash
 NUM_WORKERS=4
-TARGET_DIR=.
+TASK_TIMEOUT=120
+MAX_TURNS=5
 ```
 
-or set environment variables in shell (overrides .env):
-```bash
-export NUM_WORKERS=8
-demiurg design.txt
-```
-
-all settings optional with defaults. see `.env.example` for full list.
+CLI args override env vars. all settings optional with defaults.
 
 ## architecture
 
@@ -92,9 +92,8 @@ goal-oriented execution:
 3. judge polls completion every 5s, exits when done
 
 state persisted to ./.demiurg/ (tasks.json, work.json, log/) in each project.
-each project has isolated state - no global mixing.
 
-see SPEC.md for specification, ARCHITECTURE.md for architecture details.
+see SPEC.md for specification, ARCHITECTURE.md for details.
 
 ## examples
 
@@ -105,7 +104,7 @@ see `examples/` directory:
 
 run an example:
 ```bash
-demiurg examples/fastapi-server.txt
+demiurg -f examples/fastapi-server.txt
 ```
 
 ## build
@@ -117,10 +116,6 @@ make test     # pytest
 make right    # pyright + pytest
 make clean    # remove cache and state
 ```
-
-## contributing
-
-see [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 ## license
 

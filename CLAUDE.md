@@ -1,8 +1,8 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with this repository.
 
-autonomous agent orchestration implementing cursor's planner-worker-judge pattern for goal-oriented code generation.
+autonomous agent orchestration implementing cursor's planner-worker-judge pattern.
 
 ## build and run
 
@@ -14,16 +14,34 @@ make right              # pyright + pytest
 make clean              # remove cache and state
 ```
 
-run from git:
-```bash
-uvx github.com/kronael/demiurg design.txt
-```
-
 run locally:
 ```bash
-demiurg design.txt      # new run
+demiurg                 # reads SPEC.md by default
+demiurg -f spec.txt     # specify design file
 demiurg -c              # continue from last run
+demiurg -w 8 -t 300     # 8 workers, 5min timeout
 ```
+
+## CLI (click-based)
+
+entry point: `demiurg.__main__:run` using click decorators.
+
+```python
+@click.command()
+@click.argument("design", required=False)
+@click.option("-f", "--file", ...)
+@click.option("-c", "--continue", "cont", is_flag=True, ...)
+@click.option("-w", "--workers", type=int, ...)
+@click.option("-t", "--timeout", type=int, ...)
+@click.option("-m", "--max-turns", type=int, ...)
+def run(...):
+```
+
+defaults:
+- design file: SPEC.md (no positional arg required)
+- max_turns: 5 (bounded agent loops)
+- task_timeout: 120s
+- workers: 4
 
 ## critical patterns
 
@@ -40,72 +58,52 @@ if task.status is TaskStatus.PENDING:  # use 'is' not ==
 ### config loading
 - loads from ./.env if exists (via python-dotenv)
 - environment variables override .env settings
+- CLI args override env vars
 - all settings optional with defaults
-- no global config files (project-local .env only)
 - no API key needed (uses claude code CLI session)
 
 ### continuation flow
 ```python
-if args.cont:
-    await state.reset_interrupted_tasks()  # running → pending
+if cont:
+    await state.reset_interrupted_tasks()  # running -> pending
     pending = await state.get_pending_tasks()
     for task in pending:
         await queue.put(task)
 ```
 
-### planner implementation
-uses ClaudeCodeClient to parse design files:
-- calls `claude -p <prompt> --model sonnet --permission-mode acceptEdits`
-- prompt asks for JSON array with description/priority/complexity
-- parses JSON response into Task objects
-- falls back to simple line-based parsing on error (_simple_parse)
-- fallback: strips bullets/asterisks/headings, creates tasks from lines >5 chars
-- 60s timeout for parsing
-
-### worker implementation
-uses ClaudeCodeClient (claude_code.py):
-- client isolated in claude_code.py for reuse as library
-- spawns `claude -p <prompt> --model sonnet --permission-mode acceptEdits`
-- runs in cfg.target_dir (current working directory)
-- 60s timeout per task (wrapped in asyncio.timeout)
-- claude code has full tool access (read/write files, bash, etc)
-- streams output line-by-line using execute_stream()
-- worker.py:_do_work() calls claude.execute_stream() and prints each line
-
 ## shocking patterns
 
-**judge exits (not continuous)**: judge task completes when goal satisfied, triggering main() to cancel workers and exit. no daemon mode, no http server - just runs until done.
+**judge exits (not continuous)**: judge task completes when goal satisfied.
+no daemon mode, no http server - just runs until done.
 
-**no queue persistence**: queue regenerated from pending tasks on continuation. only task state persisted to disk.
+**no queue persistence**: queue regenerated from pending tasks on continuation.
 
-**single planner at startup**: planner runs once at startup to break design into tasks using Claude CLI, then exits. no continuous planning, no cycles.
+**single planner at startup**: planner runs once to break design into tasks,
+then exits. no continuous planning.
 
-**async locks everywhere**: state manager uses asyncio.Lock for all mutations. no sync primitives in async code.
+**async locks everywhere**: state manager uses asyncio.Lock for all mutations.
 
-**in-memory queue**: asyncio.Queue used for task coordination. workers block on queue.get(), no polling.
+**streaming output**: workers stream claude CLI output line-by-line during
+execution. prints in real-time prefixed with worker ID.
 
-**streaming output**: workers stream claude CLI output line-by-line during execution (not buffered until complete). prints in real-time prefixed with worker ID.
+**permission mode hardcoded**: claude CLI always called with
+`--permission-mode acceptEdits` to auto-approve file edits.
 
-**permission mode hardcoded**: claude CLI always called with `--permission-mode acceptEdits` to auto-approve file edits. no interactive prompts.
-
-**dynamic worker scaling**: adjusts worker count to task count at startup (min(cfg.num_workers, len(pending_tasks))). never spawns more workers than tasks.
+**dynamic worker scaling**: adjusts worker count to task count at startup
+(min(cfg.num_workers, len(pending_tasks))). never spawns more than tasks.
 
 ## architecture
 
-### entry point
-- `demiurg.__main__:run` is the entry point (defined in pyproject.toml)
-- `__main__.py` contains the actual implementation
-
 ### execution flow
 1. parse args (design file path or -c for continuation)
-2. load config from env/.demiurg files
+2. load config from env/.env files
 3. init state manager (loads from ./.demiurg/)
 4. if new run:
    - planner.plan_once() parses design file into tasks
    - state.init_work() creates work.json
 5. if continuation (-c):
    - load existing work.json
-   - reset interrupted tasks (running → pending)
+   - reset interrupted tasks (running -> pending)
 6. populate queue from pending tasks
 7. spawn workers (default 4) and judge
 8. workers pull tasks from queue and execute
@@ -113,88 +111,38 @@ uses ClaudeCodeClient (claude_code.py):
 10. main() cancels workers and exits
 
 ### task states
-explicit enum in types_.py:
-- PENDING: created, not started
-- RUNNING: worker executing
-- COMPLETED: finished successfully
-- FAILED: error during execution
-
-transitions:
-- pending → running (worker starts)
-- running → completed (success)
-- running → failed (error/timeout)
-- running → pending (continuation after interrupt)
+explicit enum in types_.py: PENDING, RUNNING, COMPLETED, FAILED
 
 ### state persistence
-all state at ./.demiurg/ (project-local, not global):
+all state at ./.demiurg/ (project-local):
 - tasks.json: array of all tasks with metadata
 - work.json: design_file, goal_text, is_complete
 - log/: execution logs
 
-state written on every change (within lock).
-each project has isolated state in its own ./.demiurg/ directory.
-
 ### key files
-- `__main__.py`: entry point, orchestrates planner/workers/judge (130 lines)
+- `__main__.py`: entry point, orchestrates planner/workers/judge
 - `config.py`: load config from environment variables
-- `state.py`: StateManager with async locks for task/work persistence (162 lines)
-- `types_.py`: Task, TaskStatus, WorkState dataclasses (underscore avoids masking built-in types)
-- `planner.py`: parse design file into tasks using Claude CLI (120 lines)
-- `worker.py`: execute tasks from queue using ClaudeCodeClient (75 lines)
-- `claude_code.py`: isolated client for calling claude code CLI (112 lines, reusable as library)
+- `state.py`: StateManager with async locks
+- `types_.py`: Task, TaskStatus, WorkState dataclasses
+- `planner.py`: parse design file into tasks using Claude CLI
+- `worker.py`: execute tasks from queue using ClaudeCodeClient
+- `claude_code.py`: isolated client for calling claude code CLI
 - `judge.py`: poll for completion every 5s, exit when done
-
-## package structure
-
-- package name: `demiurg`
-- command name: `demiurg`
-- internal module: `demiurg/` (no __init__.py needed)
-- entry point: `demiurg.__main__:run`
 
 ## configuration
 
 loads from ./.env (project-local) + environment variables:
 
-all optional (with defaults):
 - NUM_WORKERS=4
-- NUM_PLANNERS=2 (unused in current implementation)
-- TARGET_DIR=. (working directory)
-- LOG_DIR={TARGET_DIR}/.demiurg/log
-- DATA_DIR={TARGET_DIR}/.demiurg
-- PORT=8080 (unused in current implementation)
+- TASK_TIMEOUT=120 (seconds)
+- MAX_TURNS=5 (agentic turns per task)
+- LOG_DIR=.demiurg/log
+- DATA_DIR=.demiurg
 
 no API key required - uses authenticated claude code CLI session.
-
-state is project-local by default (isolated per project).
-all state in ./.demiurg/ (gitignored).
-
-## standard documentation files
-
-every project should have:
-
-**onepager.md**: marketing narrative/elevator pitch
-- what the software does
-- what problem it solves
-- why it's needed, unique, and valuable
-- comparison with alternatives
-- 1-page, non-technical audience
-
-**blog.md**: technical narrative for publication
-- what we built and why
-- interesting lessons learned (not mundane)
-- technical challenges and solutions
-- surprising discoveries
-- things we'd change
-- ~800-1500 words, technical audience
-
-**README.md**: user-facing documentation
-**CLAUDE.md**: development patterns (<200 lines)
-**ARCHITECTURE.md**: technical design
-**SPEC.md**: goals and requirements
 
 ## commit messages
 
 format: `[section] message`
 - lowercase, imperative mood
-- no Co-Authored-By tags
-- example: `[config] use .env format instead of TOML`
+- example: `[config] remove unused PORT and NUM_PLANNERS`

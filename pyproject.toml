@@ -1,6 +1,6 @@
 [project]
 name = "demiurg"
-version = "0.1.0"
+version = "0.2.0"
 description = "autonomous coding agent using planner-worker-judge pattern"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -16,6 +16,7 @@ classifiers = [
 ]
 dependencies = [
     "python-dotenv>=1.0.0",
+    "click>=8.1.0",
 ]
 
 [project.optional-dependencies]
@@ -27,6 +28,7 @@ dev = [
 
 [project.urls]
 Homepage = "https://github.com/kronael/demiurg"
+Documentation = "https://github.com/kronael/demiurg#readme"
 Repository = "https://github.com/kronael/demiurg"
 Issues = "https://github.com/kronael/demiurg/issues"
 

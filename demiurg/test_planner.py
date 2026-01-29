@@ -1,30 +1,28 @@
 """Unit tests for planner module
 
-Tests the Planner class which parses design files into tasks.
+Tests the Planner class which parses design files into tasks using Claude.
 """
 from __future__ import annotations
 
-import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
 from demiurg.config import Config
 from demiurg.planner import Planner
 from demiurg.state import StateManager
-from demiurg.types_ import TaskStatus, WorkState
+from demiurg.types_ import TaskStatus
 
 
 @pytest.fixture
 def config(tmp_path):
     """create test config"""
     return Config(
-        num_planners=1,
         num_workers=1,
-        target_dir=str(tmp_path),
         log_dir=str(tmp_path / ".demiurg" / "log"),
         data_dir=str(tmp_path / ".demiurg"),
-        port=8080,
+        max_turns=5,
+        task_timeout=120,
     )
 
 
@@ -40,174 +38,106 @@ def planner(config, state):
     return Planner(config, state)
 
 
-@pytest.mark.asyncio
-async def test_simple_parse_bullet_points(planner):
-    """test simple parsing with bullet points"""
-    goal = """
-# My Project
+def test_parse_xml_basic(planner):
+    """test XML parsing with valid response"""
+    xml = """<tasks>
+<task>Create main.go</task>
+<task>Add HTTP server</task>
+</tasks>"""
 
-- Create hello.py
-- Add tests
-- Write documentation
-"""
-    tasks = planner._simple_parse(goal)
+    tasks = planner._parse_xml(xml)
 
-    assert len(tasks) == 3
-    assert tasks[0].description == "Create hello.py"
-    assert tasks[1].description == "Add tests"
-    assert tasks[2].description == "Write documentation"
+    assert len(tasks) == 2
+    assert tasks[0].description == "Create main.go"
+    assert tasks[1].description == "Add HTTP server"
     assert all(t.status is TaskStatus.PENDING for t in tasks)
 
 
-@pytest.mark.asyncio
-async def test_simple_parse_asterisks(planner):
-    """test simple parsing with asterisks"""
-    goal = """
-* Task one
-* Task two
-"""
-    tasks = planner._simple_parse(goal)
+def test_parse_xml_with_whitespace(planner):
+    """test XML parsing handles whitespace"""
+    xml = """
+    <tasks>
+        <task>  Create main.go  </task>
+        <task>
+            Add HTTP server
+        </task>
+    </tasks>
+    """
+
+    tasks = planner._parse_xml(xml)
 
     assert len(tasks) == 2
-    assert tasks[0].description == "Task one"
-    assert tasks[1].description == "Task two"
+    assert tasks[0].description == "Create main.go"
+    assert tasks[1].description == "Add HTTP server"
 
 
-@pytest.mark.asyncio
-async def test_simple_parse_headings(planner):
-    """test simple parsing with markdown headings"""
-    goal = """
-### Create module
-### Add tests
-"""
-    tasks = planner._simple_parse(goal)
+def test_parse_xml_empty(planner):
+    """test XML parsing with no tasks"""
+    xml = "<tasks></tasks>"
 
-    assert len(tasks) == 2
-    assert tasks[0].description == "Create module"
-    assert tasks[1].description == "Add tests"
+    tasks = planner._parse_xml(xml)
+
+    assert len(tasks) == 0
 
 
-@pytest.mark.asyncio
-async def test_simple_parse_empty(planner):
-    """test simple parsing with empty goal creates fallback task"""
-    goal = ""
-    tasks = planner._simple_parse(goal)
+def test_parse_xml_ignores_short(planner):
+    """test XML parsing ignores short descriptions"""
+    xml = """<tasks>
+<task>Hi</task>
+<task>Create a valid task</task>
+</tasks>"""
+
+    tasks = planner._parse_xml(xml)
 
     assert len(tasks) == 1
-    assert tasks[0].description == ""
+    assert tasks[0].description == "Create a valid task"
 
 
-@pytest.mark.asyncio
-async def test_simple_parse_long_goal(planner):
-    """test simple parsing truncates long goals"""
-    goal = "x" * 300
-    tasks = planner._simple_parse(goal)
+def test_parse_xml_with_noise(planner):
+    """test XML parsing extracts tasks from noisy response"""
+    xml = """Here are the tasks:
 
-    assert len(tasks) == 1
-    assert len(tasks[0].description) == 200
+<tasks>
+<task>Create main.go</task>
+</tasks>
 
+Let me know if you need more."""
 
-@pytest.mark.asyncio
-async def test_simple_parse_ignores_comments(planner):
-    """test simple parsing ignores comment lines"""
-    goal = """
-# This is a comment
-- Task one
-# Another comment
-- Task two
-"""
-    tasks = planner._simple_parse(goal)
-
-    assert len(tasks) == 2
-    assert tasks[0].description == "Task one"
-
-
-@pytest.mark.asyncio
-async def test_simple_parse_ignores_short_lines(planner):
-    """test simple parsing ignores lines shorter than 5 chars"""
-    goal = """
-- Hi
-- This is a valid task
-- OK
-"""
-    tasks = planner._simple_parse(goal)
+    tasks = planner._parse_xml(xml)
 
     assert len(tasks) == 1
-    assert tasks[0].description == "This is a valid task"
+    assert tasks[0].description == "Create main.go"
 
 
 @pytest.mark.asyncio
-async def test_parse_tasks_claude_success(planner):
+async def test_parse_tasks_success(planner):
     """test _parse_tasks with successful Claude response"""
     goal = "Create a web server"
 
-    # mock Claude response
-    claude_response = json.dumps([
-        {"description": "Create server.py", "priority": "high", "estimated_complexity": "moderate"},
-        {"description": "Add routing logic", "priority": "medium", "estimated_complexity": "simple"},
-    ])
+    xml_response = """<tasks>
+<task>Create server.go with main function</task>
+<task>Add HTTP handler for /health endpoint</task>
+</tasks>"""
 
-    planner.claude.execute = AsyncMock(return_value=claude_response)
+    planner.claude.execute = AsyncMock(return_value=xml_response)
 
     tasks = await planner._parse_tasks(goal)
 
     assert len(tasks) == 2
-    assert tasks[0].description == "Create server.py"
-    assert tasks[1].description == "Add routing logic"
-    assert all(t.status is TaskStatus.PENDING for t in tasks)
+    assert tasks[0].description == "Create server.go with main function"
+    assert tasks[1].description == "Add HTTP handler for /health endpoint"
 
 
 @pytest.mark.asyncio
-async def test_parse_tasks_claude_invalid_json(planner):
-    """test _parse_tasks falls back on invalid JSON"""
-    goal = "- Fallback task"
-
-    planner.claude.execute = AsyncMock(return_value="not json")
-
-    tasks = await planner._parse_tasks(goal)
-
-    # should fall back to simple parsing
-    assert len(tasks) == 1
-    assert tasks[0].description == "Fallback task"
-
-
-@pytest.mark.asyncio
-async def test_parse_tasks_claude_not_array(planner):
-    """test _parse_tasks falls back when response is not array"""
-    goal = "- Fallback task"
-
-    planner.claude.execute = AsyncMock(return_value='{"not": "an array"}')
-
-    tasks = await planner._parse_tasks(goal)
-
-    assert len(tasks) == 1
-    assert tasks[0].description == "Fallback task"
-
-
-@pytest.mark.asyncio
-async def test_parse_tasks_claude_empty_array(planner):
-    """test _parse_tasks falls back on empty array"""
-    goal = "- Fallback task"
-
-    planner.claude.execute = AsyncMock(return_value="[]")
-
-    tasks = await planner._parse_tasks(goal)
-
-    assert len(tasks) == 1
-    assert tasks[0].description == "Fallback task"
-
-
-@pytest.mark.asyncio
-async def test_parse_tasks_claude_timeout(planner):
-    """test _parse_tasks falls back on timeout"""
-    goal = "- Fallback task"
+async def test_parse_tasks_claude_failure(planner):
+    """test _parse_tasks returns empty on Claude failure"""
+    goal = "Create a web server"
 
     planner.claude.execute = AsyncMock(side_effect=RuntimeError("timeout"))
 
     tasks = await planner._parse_tasks(goal)
 
-    assert len(tasks) == 1
-    assert tasks[0].description == "Fallback task"
+    assert len(tasks) == 0
 
 
 @pytest.mark.asyncio
@@ -221,43 +151,20 @@ async def test_plan_once_no_work(planner, state):
 @pytest.mark.asyncio
 async def test_plan_once_with_work(planner, state):
     """test plan_once creates tasks from work state"""
-    # set up work state
-    await state.init_work("test.txt", "- Task one\n- Task two")
+    await state.init_work("test.txt", "Create a hello world app")
 
-    # mock Claude to use simple parsing
-    planner.claude.execute = AsyncMock(side_effect=RuntimeError("force fallback"))
+    xml_response = """<tasks>
+<task>Create hello.py with main function</task>
+<task>Add print statement</task>
+</tasks>"""
+
+    planner.claude.execute = AsyncMock(return_value=xml_response)
 
     tasks = await planner.plan_once()
 
     assert len(tasks) == 2
-    assert tasks[0].description == "Task one"
-    assert tasks[1].description == "Task two"
+    assert tasks[0].description == "Create hello.py with main function"
 
     # verify tasks were added to state
     all_tasks = await state.get_all_tasks()
     assert len(all_tasks) == 2
-
-
-@pytest.mark.asyncio
-async def test_plan_once_integration(planner, state):
-    """integration test: plan_once with Claude CLI"""
-    await state.init_work("test.txt", """
-Create a simple Python calculator with:
-- Add function
-- Subtract function
-- Multiply function
-- Divide function with zero check
-""")
-
-    # this will actually call Claude CLI if available
-    tasks = await planner.plan_once()
-
-    # should get at least the 4 functions as tasks
-    assert len(tasks) >= 4
-
-    # verify all tasks are pending
-    assert all(t.status is TaskStatus.PENDING for t in tasks)
-
-    # verify tasks were persisted
-    all_tasks = await state.get_all_tasks()
-    assert len(all_tasks) == len(tasks)

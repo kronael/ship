@@ -13,24 +13,21 @@ class ClaudeCodeClient:
     supports both buffered (execute) and streaming (execute_stream) modes
     """
 
-    def __init__(self, model: str = "sonnet", cwd: str = ".", permission_mode: str = "acceptEdits"):
+    def __init__(
+        self,
+        model: str = "sonnet",
+        cwd: str = ".",
+        permission_mode: str = "acceptEdits",
+        max_turns: int | None = None,
+    ):
         self.model = model
         self.cwd = cwd
         self.permission_mode = permission_mode
+        self.max_turns = max_turns
 
-    async def execute(
-        self, prompt: str, timeout: int = 120
-    ) -> str:
-        """execute prompt via claude code CLI
-
-        spawns: claude -p <prompt> --model <model>
-        runs in: self.cwd
-        timeout: seconds (default 120)
-
-        returns: stdout from claude CLI
-        raises: RuntimeError on failure or timeout
-        """
-        proc = await asyncio.create_subprocess_exec(
+    def _build_args(self, prompt: str) -> list[str]:
+        """build claude CLI arguments"""
+        args = [
             "claude",
             "-p",
             prompt,
@@ -38,6 +35,26 @@ class ClaudeCodeClient:
             self.model,
             "--permission-mode",
             self.permission_mode,
+        ]
+        if self.max_turns is not None:
+            args.extend(["--max-turns", str(self.max_turns)])
+        return args
+
+    async def execute(
+        self, prompt: str, timeout: int = 120
+    ) -> str:
+        """execute prompt via claude code CLI
+
+        spawns: claude -p <prompt> --model <model> [--max-turns N]
+        runs in: self.cwd
+        timeout: seconds (default 120)
+
+        returns: stdout from claude CLI
+        raises: RuntimeError on failure or timeout
+        """
+        args = self._build_args(prompt)
+        proc = await asyncio.create_subprocess_exec(
+            *args,
             cwd=self.cwd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -72,14 +89,9 @@ class ClaudeCodeClient:
         yields lines from claude CLI stdout in real-time
         raises: RuntimeError on failure or timeout
         """
+        args = self._build_args(prompt)
         proc = await asyncio.create_subprocess_exec(
-            "claude",
-            "-p",
-            prompt,
-            "--model",
-            self.model,
-            "--permission-mode",
-            self.permission_mode,
+            *args,
             cwd=self.cwd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
