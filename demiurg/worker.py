@@ -11,10 +11,11 @@ from demiurg.types_ import Task, TaskStatus
 
 class Worker:
     """executes tasks from queue using claude code CLI"""
-    def __init__(self, worker_id: str, cfg: Config, state: StateManager):
+    def __init__(self, worker_id: str, cfg: Config, state: StateManager, skills: list[str] | None = None):
         self.worker_id = worker_id
         self.cfg = cfg
         self.state = state
+        self.skills = skills or []
         self.claude = ClaudeCodeClient(
             model="sonnet",
             max_turns=cfg.max_turns,
@@ -74,8 +75,15 @@ class Worker:
 
     async def _do_work(self, task: Task) -> str:
         """execute task by calling claude code CLI with streaming output"""
+        # prepend skills activation to prompt
+        if self.skills:
+            skills_str = " ".join(self.skills)
+            prompt = f"Use skills: {skills_str}\n\nTask: {task.description}"
+        else:
+            prompt = task.description
+
         output_lines = []
-        async for line in self.claude.execute_stream(task.description, timeout=self.cfg.task_timeout):
+        async for line in self.claude.execute_stream(prompt, timeout=self.cfg.task_timeout):
             if line.strip():
                 print(f"  {line}")
             output_lines.append(line)

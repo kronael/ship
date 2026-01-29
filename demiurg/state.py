@@ -3,11 +3,24 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from copy import copy
 from datetime import datetime
 from pathlib import Path
 
 from demiurg.types_ import Task, TaskStatus, WorkState
+
+
+def _extract_skills(text: str) -> list[str]:
+    """extract skills from 'Skills: /go, /cli' line in design doc"""
+    for line in text.split("\n"):
+        line = line.strip()
+        if line.lower().startswith("skills:"):
+            # extract /skill patterns
+            skills_part = line.split(":", 1)[1]
+            skills = re.findall(r"/[\w-]+", skills_part)
+            return skills
+    return []
 
 
 class StateManager:
@@ -61,6 +74,9 @@ class StateManager:
                         data["last_updated_at"] = datetime.fromisoformat(
                             data["last_updated_at"]
                         )
+                    # backwards compat: old work.json may not have skills
+                    if "skills" not in data:
+                        data["skills"] = []
                     self.work = WorkState(**data)
         except (OSError, json.JSONDecodeError, ValueError) as e:
             raise RuntimeError(f"failed to load work state: {e}") from e
@@ -84,7 +100,14 @@ class StateManager:
 
     async def init_work(self, design_file: str, goal_text: str) -> None:
         async with self.lock:
-            self.work = WorkState(design_file=design_file, goal_text=goal_text)
+            skills = _extract_skills(goal_text)
+            self.work = WorkState(
+                design_file=design_file,
+                goal_text=goal_text,
+                skills=skills,
+            )
+            if skills:
+                logging.info(f"detected skills: {', '.join(skills)}")
             self._save_work()
 
     async def add_task(self, task: Task) -> bool:

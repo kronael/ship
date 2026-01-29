@@ -139,10 +139,16 @@ async def _main(
     if num_workers < cfg.num_workers:
         logging.info(f"reducing workers from {cfg.num_workers} to {num_workers} (only {len(pending)} tasks)")
 
+    # get skills from work state
+    work = state.get_work_state()
+    skills = work.skills if work else []
+    if skills:
+        click.echo(f"skills: {', '.join(skills)}")
+
     click.echo(f"progress: {completed}/{total} tasks completed")
     click.echo(f"workers: {num_workers}\n")
 
-    worker_list = [Worker(f"worker-{i}", cfg, state) for i in range(num_workers)]
+    worker_list = [Worker(f"worker-{i}", cfg, state, skills=skills) for i in range(num_workers)]
     judge = Judge(state)
 
     worker_tasks = [asyncio.create_task(w.run(queue)) for w in worker_list]
