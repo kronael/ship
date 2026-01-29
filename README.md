@@ -11,17 +11,22 @@ implements [cursor's battle-tested architecture](https://cursor.com/blog/scaling
 
 ```bash
 # create design file
-cat > SPEC.md <<EOF
+cat > DESIGN.md <<EOF
+# my-project
+
+Build a hello world CLI tool in Python.
+
+## Tasks
 - Create hello.py with main function
-- Add greeting message "Hello from demiurg!"
+- Add greeting message
 - Make file executable
 EOF
 
-# run demiurg (reads SPEC.md by default)
+# run demiurg (reads DESIGN.md by default)
 demiurg
 
 # result: working hello.py created automatically
-python hello.py  # Hello from demiurg!
+python hello.py
 ```
 
 ## installation
@@ -38,7 +43,7 @@ demiurg
 ## usage
 
 ```bash
-# run with default SPEC.md
+# run with default DESIGN.md
 demiurg
 
 # specify design file
@@ -58,8 +63,8 @@ demiurg -m 10          # 10 max turns per task (default: 5)
 
 | Flag | Long | Description | Default |
 |------|------|-------------|---------|
-| | | design file (positional) | SPEC.md |
-| -f | --file | design file (like make -f) | SPEC.md |
+| | | design file (positional) | DESIGN.md |
+| -f | --file | design file (like make -f) | DESIGN.md |
 | -c | --continue | resume from last run | - |
 | -w | --workers | parallel workers | 4 |
 | -t | --timeout | task timeout (seconds) | 120 |
@@ -84,16 +89,53 @@ CLI args override env vars. all settings optional with defaults.
 
 ## architecture
 
-goal-oriented execution:
-1. planner reads design file, generates tasks (once at start)
-2. workers execute tasks in parallel (4 by default)
-   - each worker spawns `claude -p <task> --model sonnet`
-   - claude code has full tool access (read/write files, bash, etc)
-3. judge polls completion every 5s, exits when done
+```
+DESIGN.md → Planner → Tasks → Workers → Refiner → More Tasks? → Done
+                ↓         ↓         ↓           ↓
+          (extracts   (parallel  (analyzes   (up to 3
+           context)    Claude)    results)    rounds)
+```
 
-state persisted to ./.demiurg/ (tasks.json, work.json, log/) in each project.
+1. **planner** - parses DESIGN.md, extracts project context and tasks
+2. **workers** - execute tasks in parallel using Claude CLI
+3. **judge** - monitors completion, triggers refinement
+4. **refiner** - analyzes completed work, creates follow-up tasks
 
-see SPEC.md for specification, ARCHITECTURE.md for details.
+### skills injection
+
+demiurg automatically loads skills from `~/.claude/skills/` and injects them into worker prompts. workers use relevant skills based on project context.
+
+supported skill formats:
+- `~/.claude/skills/go/SKILL.md` - directory with SKILL.md
+- `~/.claude/skills/python.md` - single file
+
+skills are injected as context, not slash commands. workers see patterns and use them automatically.
+
+### project context
+
+planner extracts project context from DESIGN.md:
+- what's being built
+- tech stack (language, framework)
+- key patterns
+
+this context is injected into every worker prompt, enabling automatic skill selection.
+
+### refinement loop
+
+after all tasks complete, the refiner analyzes results:
+- are there obvious follow-up tasks? (tests, fixes, docs)
+- do failed tasks need alternative approaches?
+
+up to 3 refinement rounds run automatically. no manual intervention needed.
+
+## state
+
+state persisted to `./.demiurg/`:
+- `tasks.json` - task list with status
+- `work.json` - project context, completion state
+- `log/` - execution logs
+
+each project has isolated state. safe to run multiple demiurg instances in different directories.
 
 ## examples
 
@@ -102,7 +144,6 @@ see `examples/` directory:
 - `fastapi-server.txt` - complete REST API with tests
 - `cli-tool.txt` - CLI tool with subcommands
 
-run an example:
 ```bash
 demiurg -f examples/fastapi-server.txt
 ```

@@ -5,6 +5,7 @@ import logging
 
 from demiurg.claude_code import ClaudeCodeClient
 from demiurg.config import Config
+from demiurg.skills import format_skills_for_prompt, load_skills
 from demiurg.state import StateManager
 from demiurg.types_ import Task, TaskStatus
 
@@ -16,6 +17,7 @@ class Worker:
         self.cfg = cfg
         self.state = state
         self.project_context = project_context
+        self.skills = load_skills()
         self.claude = ClaudeCodeClient(
             model="sonnet",
             max_turns=cfg.max_turns,
@@ -75,15 +77,21 @@ class Worker:
 
     async def _do_work(self, task: Task) -> str:
         """execute task by calling claude code CLI with streaming output"""
-        # build prompt with context and skill activation
+        # build prompt with context, skills, and task
+        parts = []
+
         if self.project_context:
-            prompt = f"""Project: {self.project_context}
+            parts.append(f"Project: {self.project_context}")
 
-Activate the appropriate skills for this project (e.g., /go, /python, /rust, /cli, /service based on the tech stack).
+        if self.skills:
+            skills_text = format_skills_for_prompt(self.skills)
+            if skills_text:
+                parts.append(skills_text)
+                parts.append("Use the relevant skills above for this task.")
 
-Task: {task.description}"""
-        else:
-            prompt = task.description
+        parts.append(f"Task: {task.description}")
+
+        prompt = "\n\n".join(parts)
 
         output_lines = []
         async for line in self.claude.execute_stream(prompt, timeout=self.cfg.task_timeout):
