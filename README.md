@@ -13,8 +13,8 @@ requires claude code CLI and codex CLI, both authenticated.
 ## usage
 
 ```bash
-ship                 # reads DESIGN.md
-ship -f spec.txt     # specify design file
+ship                 # reads SPEC.md
+ship spec.txt        # specify design file
 ship -c              # continue interrupted run
 ship -w 8            # 8 workers (default: 4)
 ship -t 600          # 10min timeout per task (default: 1200s)
