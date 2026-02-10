@@ -2,7 +2,7 @@
 """example: using ClaudeCodeClient as a library"""
 
 import asyncio
-from demiurg.claude_code import ClaudeCodeClient
+from ship.claude_code import ClaudeCodeClient
 
 
 async def main():

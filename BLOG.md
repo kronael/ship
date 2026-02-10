@@ -1,6 +1,6 @@
-# building demiurg: autonomous coding with planner-worker-judge
+# building ship: autonomous coding with planner-worker-judge
 
-we built demiurg to test cursor's planner-worker-judge pattern outside their IDE. turns out the pattern works brilliantly for command-line workflows, but the interesting lessons were in the details they didn't mention.
+we built ship to test cursor's planner-worker-judge pattern outside their IDE. turns out the pattern works brilliantly for command-line workflows, but the interesting lessons were in the details they didn't mention.
 
 ## the core idea
 
@@ -10,11 +10,11 @@ it does. but the devil's in the details.
 
 ## lesson 1: state location breaks everything
 
-first implementation used global state at `~/.demiurg/data/`. seemed reasonable - why scatter state files everywhere?
+first implementation used global state at `~/.ship/data/`. seemed reasonable - why scatter state files everywhere?
 
-problem: you can't run demiurg on two projects simultaneously. state mixing, task confusion, race conditions. debugging was hell.
+problem: you can't run ship on two projects simultaneously. state mixing, task confusion, race conditions. debugging was hell.
 
-**fix**: project-local `./.demiurg/` per directory. obvious in retrospect. now you can run 10 instances, no conflicts. state isolation isn't optional, it's foundational.
+**fix**: project-local `./.ship/` per directory. obvious in retrospect. now you can run 10 instances, no conflicts. state isolation isn't optional, it's foundational.
 
 ## lesson 2: streaming vs buffering changes user experience
 
@@ -71,7 +71,7 @@ future work: dependency analysis in planner to enable actual parallel speedup.
 
 started with python-dotenv loading global + local config files. flexible, precedence clear.
 
-problem: users don't know where to put config. `~/.demiurg/config`? `./.demiurg`? `.env`? too many options = confusion.
+problem: users don't know where to put config. `~/.ship/config`? `./.ship`? `.env`? too many options = confusion.
 
 **fix**: just `.env` in project root, environment variables override. simpler mental model. global config wasn't needed - if you want global settings, use `~/.bashrc`.
 
@@ -137,4 +137,4 @@ planner-worker-judge works outside cursor. pattern is sound. interesting bits ar
 
 if you're building agent orchestration: isolate state, stream everything, tune timeouts empirically, show progress at multiple granularities.
 
-code at github.com/kronael/demiurg - 800 lines total, most of it state management and progress reporting.
+code at github.com/kronael/ship - 800 lines total, most of it state management and progress reporting.

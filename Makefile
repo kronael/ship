@@ -7,7 +7,7 @@ install:
 	uv tool install --editable .
 
 run:
-	uv run python -m demiurg
+	uv run python -m ship
 
 test:
 	uv run pytest -v
@@ -16,13 +16,13 @@ smoke:
 	uv run pytest -v
 
 right:
-	uv run pyright demiurg/
+	uv run pyright ship/
 	uv run pytest -v
 
 image:
-	docker build -t demiurg .
+	docker build -t ship .
 
 clean:
-	rm -rf __pycache__ demiurg/__pycache__
+	rm -rf __pycache__ ship/__pycache__
 	rm -rf .pytest_cache
-	rm -rf .demiurg/
+	rm -rf .ship/

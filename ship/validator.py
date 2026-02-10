@@ -1,0 +1,71 @@
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+
+from ship.claude_code import ClaudeCodeClient
+from ship.prompts import VALIDATOR
+
+
+@dataclass(slots=True)
+class ValidationResult:
+    accept: bool
+    gaps: list[str]
+    project_md: str
+
+
+class Validator:
+    """validate design/spec quality before planning"""
+
+    def __init__(self, verbose: bool = False):
+        self.verbose = verbose
+        self.claude = ClaudeCodeClient(model="sonnet")
+
+    async def validate(self, design_text: str) -> ValidationResult:
+        prompt = VALIDATOR.format(design_text=design_text)
+
+        if self.verbose:
+            print(f"\n{'='*60}")
+            print("VALIDATOR PROMPT:")
+            print(f"{'='*60}")
+            print(prompt)
+            print(f"{'='*60}\n")
+
+        result = await self.claude.execute(prompt, timeout=60)
+
+        if self.verbose:
+            print(f"\n{'='*60}")
+            print("VALIDATOR RESPONSE:")
+            print(f"{'='*60}")
+            print(result)
+            print(f"{'='*60}\n")
+
+        return self._parse(result)
+
+    def _parse(self, text: str) -> ValidationResult:
+        decision_match = re.search(
+            r"<decision>(.*?)</decision>", text, re.DOTALL
+        )
+        decision = (
+            decision_match.group(1).strip().lower()
+            if decision_match else ""
+        )
+        accept = decision == "accept"
+
+        gaps = []
+        for m in re.findall(r"<gap>(.*?)</gap>", text, re.DOTALL):
+            gap = m.strip()
+            if gap:
+                gaps.append(gap)
+
+        project_match = re.search(
+            r"<project>(.*?)</project>", text, re.DOTALL
+        )
+        project_md = (
+            project_match.group(1).strip()
+            if project_match else ""
+        )
+
+        return ValidationResult(
+            accept=accept, gaps=gaps, project_md=project_md
+        )

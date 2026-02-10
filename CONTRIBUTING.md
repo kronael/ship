@@ -1,12 +1,12 @@
-# contributing to demiurg
+# contributing to ship
 
 contributions welcome. keep it simple.
 
 ## quick start
 
 ```bash
-git clone https://github.com/kronael/demiurg
-cd demiurg
+git clone https://github.com/kronael/ship
+cd ship
 make build
 make test
 ```
@@ -34,7 +34,7 @@ follow patterns in CLAUDE.md:
 ## testing
 
 - add tests for new features
-- unit tests in `demiurg/test_*.py`
+- unit tests in `ship/test_*.py`
 - run `make test` before committing
 - run `make right` for type checking
 
@@ -56,11 +56,11 @@ update relevant docs:
 ## bug reports
 
 open issue with:
-- demiurg version
+- ship version
 - python version
 - steps to reproduce
 - expected vs actual behavior
-- relevant logs from ./.demiurg/log/
+- relevant logs from ./.ship/log/
 
 ## feature requests
 

@@ -16,7 +16,7 @@ venv/
 .env
 
 # project state
-.demiurg/
+.ship/
 log/
 tmp/
 data/

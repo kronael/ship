@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>demiurg - autonomous coding agent</title>
+    <title>ship - autonomous coding agent</title>
     <style>
         * {
             margin: 0;
@@ -225,25 +225,18 @@
 <body>
     <div class="container">
         <header>
-            <h1>demiurg</h1>
+            <h1>ship</h1>
             <p class="subtitle">autonomous coding agent</p>
-            <p class="myth-ref">δημιουργός - the craftsman who shapes formless design into working code</p>
+            <p class="myth-ref">design in, working code out. no supervision required.</p>
         </header>
 
         <div class="hero">
             <p>
-                In ancient philosophy, the <span class="highlight">demiurge</span> was the divine craftsman who fashioned order from chaos,
-                transforming abstract forms into material reality. For millennia, philosophers could only theorize about this cosmic architect.
-            </p>
-            <p>
-                Now you can have one at home.
-            </p>
-            <p>
-                <span class="highlight">demiurg</span> reads your design specifications, breaks them into executable tasks,
+                <span class="highlight">ship</span> reads your design specifications, breaks them into executable tasks,
                 and autonomously crafts working software through parallel execution. No supervision required. No babysitting. No "one more thing."
             </p>
             <p>
-                Finally, that Hawaiian vacation. (The Necrons already figured this out - eternal life means delegating the boring parts.)
+                planner-worker-judge pattern on the command line. proven at scale by cursor, packaged for your terminal.
             </p>
         </div>
 
@@ -258,8 +251,8 @@ cat > design.txt &lt;&lt;EOF
 - add openapi documentation
 EOF
 
-# let demiurg craft it into being
-uvx github.com/kronael/demiurg design.txt
+# let ship build it
+uvx github.com/kronael/ship design.txt
 
 # result: complete API server, tests, docs
 # built autonomously while you do other work</code></pre>
@@ -274,15 +267,15 @@ uvx github.com/kronael/demiurg design.txt
                 </div>
                 <div class="feature">
                     <h3>project isolation</h3>
-                    <p>each project has its own .demiurg/ state. run multiple demiurges. start a pantheon if you want.</p>
+                    <p>each project has its own .ship/ state. run multiple instances. no conflicts.</p>
                 </div>
                 <div class="feature">
                     <h3>continuation</h3>
-                    <p>interrupted mid-creation? demiurg -c picks up exactly where it left off. even the demiurge gets coffee breaks.</p>
+                    <p>interrupted mid-build? ship -c picks up exactly where it left off.</p>
                 </div>
                 <div class="feature">
                     <h3>autonomous</h3>
-                    <p>runs to completion and exits. like a responsible deity: creates world, leaves detailed notes, doesn't hover.</p>
+                    <p>runs to completion and exits. creates the project, leaves detailed notes, doesn't hover.</p>
                 </div>
             </div>
         </section>
@@ -292,10 +285,6 @@ uvx github.com/kronael/demiurg design.txt
             <p style="color: #a0a0a0; margin-bottom: 1.5rem;">
                 implements cursor's <a href="https://cursor.com/blog/scaling-agents" style="color: #00d4ff; text-decoration: none;">planner-worker-judge pattern</a>, proven at production scale
             </p>
-            <p style="color: #888; font-size: 0.9rem; margin-bottom: 1.5rem; font-style: italic;">
-                "We're not reinventing the wheel - we're putting Cursor's battle-tested architecture on the command line.
-                They figured out how to scale autonomous agents. We just made it something you can run while you're at the beach."
-            </p>
             <div class="feature-grid">
                 <div class="feature">
                     <h3>planner</h3>
@@ -303,7 +292,7 @@ uvx github.com/kronael/demiurg design.txt
                 </div>
                 <div class="feature">
                     <h3>workers</h3>
-                    <p>4 parallel executors via Claude Code CLI. full tool access. they don't ask permission, they ask forgiveness (jk, they have --permission-mode acceptEdits).</p>
+                    <p>4 parallel executors via Claude Code CLI. full tool access with --permission-mode acceptEdits.</p>
                 </div>
                 <div class="feature">
                     <h3>judge</h3>
@@ -343,10 +332,10 @@ uvx github.com/kronael/demiurg design.txt
                         <td>project files</td>
                     </tr>
                     <tr style="background: rgba(102, 126, 234, 0.05);">
-                        <td><strong>demiurg</strong></td>
+                        <td><strong>ship</strong></td>
                         <td><strong>4 workers</strong></td>
                         <td><strong>none</strong></td>
-                        <td><strong>.demiurg/</strong></td>
+                        <td><strong>.ship/</strong></td>
                     </tr>
                 </tbody>
             </table>
@@ -357,7 +346,7 @@ uvx github.com/kronael/demiurg design.txt
             <div class="feature-grid">
                 <div class="feature">
                     <h3>boilerplate generation</h3>
-                    <p>APIs, CLIs, scripts. the stuff you could write in your sleep, so why not let demiurg write it while you sleep?</p>
+                    <p>APIs, CLIs, scripts. the stuff you could write in your sleep, so why not let ship build it while you sleep?</p>
                 </div>
                 <div class="feature">
                     <h3>migrations</h3>
@@ -369,29 +358,26 @@ uvx github.com/kronael/demiurg design.txt
                 </div>
                 <div class="feature">
                     <h3>repetitive tasks</h3>
-                    <p>tedious work that follows a pattern. delegate it to your personal demiurge. gods don't do busywork.</p>
+                    <p>tedious work that follows a pattern. delegate it to ship. you have better things to do.</p>
                 </div>
             </div>
         </section>
 
         <div class="cta">
-            <a href="https://github.com/kronael/demiurg" class="cta-button">view on github</a>
+            <a href="https://github.com/kronael/ship" class="cta-button">view on github</a>
         </div>
 
         <footer>
             <p>
-                <strong>demiurg</strong> - from δημιουργός (dēmiourgos): craftsman, artisan, creator
+                <strong>ship</strong> - design in, working code out
             </p>
             <p style="margin-top: 0.5rem; font-size: 0.85rem; color: #666;">
                 implementing <a href="https://cursor.com/blog/scaling-agents" style="color: #00d4ff;">cursor's planner-worker-judge pattern</a> on the command line
             </p>
             <p style="margin-top: 1rem;">
-                <a href="https://github.com/kronael/demiurg">github</a> ·
-                <a href="https://github.com/kronael/demiurg/blob/master/README.md">documentation</a> ·
+                <a href="https://github.com/kronael/ship">github</a> ·
+                <a href="https://github.com/kronael/ship/blob/master/README.md">documentation</a> ·
                 MIT license
-            </p>
-            <p style="margin-top: 1rem; font-size: 0.85rem; color: #555;">
-                now go enjoy that vacation. you've earned it. ☀️
             </p>
         </footer>
     </div>

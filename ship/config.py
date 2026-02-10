@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 @dataclass(frozen=True, slots=True)
 class Config:
-    """runtime configuration for demiurg
+    """runtime configuration for ship
 
     loads from .env file and environment variables
     CLI args override env vars which override .env file
@@ -63,8 +63,8 @@ class Config:
 
         return Config(
             num_workers=num_workers,
-            log_dir=os.getenv("LOG_DIR", ".demiurg/log"),
-            data_dir=os.getenv("DATA_DIR", ".demiurg"),
+            log_dir=os.getenv("LOG_DIR", ".ship/log"),
+            data_dir=os.getenv("DATA_DIR", ".ship"),
             max_turns=max_turns,
             task_timeout=task_timeout,
             verbose=verbose,

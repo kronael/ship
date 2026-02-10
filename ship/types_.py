@@ -24,6 +24,7 @@ class Task:
     created_at: datetime = field(default_factory=datetime.now)
     started_at: datetime | None = None
     completed_at: datetime | None = None
+    retries: int = 0
     error: str = ""
     result: str = ""
 
@@ -34,6 +35,7 @@ class Task:
             "files": self.files,
             "status": self.status.value,
             "created_at": self.created_at.isoformat(),
+            "retries": self.retries,
             "error": self.error,
             "result": self.result,
         }

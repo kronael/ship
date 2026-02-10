@@ -1,17 +1,17 @@
-# demiurg examples
+# ship examples
 
-example design files demonstrating demiurg usage.
+example design files demonstrating ship usage.
 
 ## usage
 
 ```bash
 # run an example
-demiurg examples/hello-world.txt
+ship examples/hello-world.txt
 
 # or copy and modify
 cp examples/fastapi-server.txt my-design.txt
 # edit my-design.txt
-demiurg my-design.txt
+ship my-design.txt
 ```
 
 ## examples

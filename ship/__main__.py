@@ -8,14 +8,15 @@ from pathlib import Path
 
 import click
 
-from demiurg.config import Config
-from demiurg.judge import Judge
-from demiurg.planner import Planner
-from demiurg.refiner import Refiner
-from demiurg.state import StateManager
-from demiurg.types_ import Task, TaskStatus
-from demiurg.validator import Validator
-from demiurg.worker import Worker
+from ship.config import Config
+from ship.display import display
+from ship.judge import Judge
+from ship.planner import Planner
+from ship.refiner import Refiner
+from ship.state import StateManager
+from ship.types_ import Task, TaskStatus
+from ship.validator import Validator
+from ship.worker import Worker
 
 DEFAULT_SPEC = "DESIGN.md"
 
@@ -82,13 +83,13 @@ async def _main(
 
     Path(cfg.log_dir).mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
-        filename=f"{cfg.log_dir}/demiurg.log",
+        filename=f"{cfg.log_dir}/ship.log",
         level=logging.INFO,
         format="%(asctime)s %(message)s",
         datefmt="%b %d %H:%M:%S",
     )
 
-    logging.info("starting demiurg")
+    logging.info("starting ship")
 
     try:
         state = StateManager(cfg.data_dir)
@@ -188,8 +189,11 @@ async def _main(
     click.echo(f"⏱️  timeout: {cfg.task_timeout}s\n")
     click.echo("─" * 60)
 
-    worker_list = [Worker(f"worker-{i}", cfg, state, project_context=project_context) for i in range(num_workers)]
     judge = Judge(state, queue, project_context=project_context, verbose=cfg.verbose)
+    worker_list = [
+        Worker(f"w{i}", cfg, state, project_context=project_context, judge=judge)
+        for i in range(num_workers)
+    ]
 
     worker_tasks = [asyncio.create_task(w.run(queue)) for w in worker_list]
     judge_task = asyncio.create_task(judge.run())
@@ -208,11 +212,11 @@ async def _main(
     failed = len([t for t in final_tasks if t.status is TaskStatus.FAILED])
 
     logging.info("goal satisfied")
-    click.echo("─" * 60)
-    click.echo(f"\n✨ goal satisfied!")
-    click.echo(f"   {completed}/{total} completed")
+    display.clear_status()
+    click.echo("\n" + "─" * 60)
+    click.echo(f"\ndone. {completed}/{total} completed", nl=False)
     if failed > 0:
-        click.echo(f"   {failed} failed")
+        click.echo(f", {failed} failed", nl=False)
     click.echo()
 
 

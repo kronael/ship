@@ -37,7 +37,7 @@ goal-oriented execution: runs until satisfied, then exits (not a daemon).
 
 ### state persistence
 
-- all state stored as json files at ./.demiurg/ (project-local)
+- all state stored as json files at ./.ship/ (project-local)
 - tasks.json contains all task metadata
 - work.json contains design_file, goal_text, is_complete flag
 - state written on every change
@@ -55,7 +55,7 @@ goal-oriented execution: runs until satisfied, then exits (not a daemon).
 ### configuration
 
 - .env config files (not toml)
-- precedence: env vars > ./.demiurg > ~/.demiurg/config
+- precedence: env vars > ./.ship > ~/.ship/config
 - all settings have defaults (no required API keys)
 - uses claude code CLI session for authentication (planner/workers)
 - uses codex CLI session for refinement critique
@@ -64,7 +64,7 @@ goal-oriented execution: runs until satisfied, then exits (not a daemon).
 
 - unix timestamp format (2026/01/16 08:00:00)
 - lowercase messages
-- logs to ./.demiurg/log/demiurg.log (project-local)
+- logs to ./.ship/log/ship.log (project-local)
 - configurable log directory
 
 ## constraints

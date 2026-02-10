@@ -7,7 +7,7 @@ from copy import copy
 from datetime import datetime
 from pathlib import Path
 
-from demiurg.types_ import Task, TaskStatus, WorkState
+from ship.types_ import Task, TaskStatus, WorkState
 
 
 
@@ -45,6 +45,8 @@ class StateManager:
                             task_data["completed_at"] = datetime.fromisoformat(
                                 task_data["completed_at"]
                             )
+                        if "retries" not in task_data:
+                            task_data["retries"] = 0
                         task = Task(**task_data)
                         task.status = TaskStatus(task_data["status"])
                         self.tasks[task.id] = task
@@ -166,6 +168,19 @@ class StateManager:
                 if t.status is TaskStatus.PENDING or t.status is TaskStatus.RUNNING
             ]
             return len(pending) == 0 and len(self.tasks) > 0
+
+    async def retry_task(self, task_id: str) -> None:
+        """reset a failed task to pending and bump retry count"""
+        async with self.lock:
+            if task_id not in self.tasks:
+                return
+            task = self.tasks[task_id]
+            task.retries += 1
+            task.status = TaskStatus.PENDING
+            task.error = ""
+            task.started_at = None
+            task.completed_at = None
+            self._save_tasks()
 
     async def reset_interrupted_tasks(self) -> None:
         """reset running tasks to pending on startup (continuation)"""

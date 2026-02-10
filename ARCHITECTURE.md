@@ -2,7 +2,7 @@
 
 ## overview
 
-demiurg implements planner-worker-judge pattern from cursor's blog post on scaling autonomous coding agents (https://cursor.com/blog/scaling-agents). goal-oriented execution: runs until satisfied, then exits.
+ship implements planner-worker-judge pattern from cursor's blog post on scaling autonomous coding agents (https://cursor.com/blog/scaling-agents). goal-oriented execution: runs until satisfied, then exits.
 
 ```
 design.txt → Planner → [task, task, task] → Queue
@@ -70,7 +70,7 @@ when complete:
 
 ### state manager
 
-persists to ./.demiurg/ as json files (project-local):
+persists to ./.ship/ as json files (project-local):
 - tasks.json: array of all tasks with metadata
 - work.json: design_file, goal_text, is_complete flag
 
@@ -137,13 +137,13 @@ state tracks interrupted work:
 continuation flow:
 ```bash
 # start work
-demiurg design.txt  # creates work.json, generates tasks
+ship design.txt  # creates work.json, generates tasks
 
 # interrupt (ctrl-c)
 ^C
 
 # continue
-demiurg -c  # loads work.json, resets running tasks, resumes
+ship -c  # loads work.json, resets running tasks, resumes
 ```
 
 ## persistence format
@@ -186,14 +186,14 @@ defaults (all optional):
 - num_workers: 4
 - max_turns: 5 (agentic turns per task)
 - task_timeout: 120 (seconds)
-- log_dir: .demiurg/log
-- data_dir: .demiurg
+- log_dir: .ship/log
+- data_dir: .ship
 
 ## logging
 
 unix format: "Jan 18 10:34:26"
 
-logs to: .demiurg/log/demiurg.log (project-local)
+logs to: .ship/log/ship.log (project-local)
 
 lowercase messages, capitalize error names only.
 
