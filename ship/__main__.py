@@ -88,10 +88,11 @@ def run(
 
     Discovers SPEC.md by default, or pass files/dirs as args.
     """
-    signal.signal(
-        signal.SIGTERM,
-        lambda s, f: (_ for _ in ()).throw(KeyboardInterrupt()),
-    )
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(
+            sig,
+            lambda s, f: (_ for _ in ()).throw(KeyboardInterrupt()),
+        )
 
     if plan_:
         plan_mode(context)
@@ -276,19 +277,16 @@ async def _main(
     click.echo(f"⏱️  timeout: {cfg.task_timeout}s\n")
     click.echo("─" * 60)
 
-    judge_session = str(uuid.uuid4())
-    worker_session = str(uuid.uuid4())
-
     judge = Judge(
         state, queue,
         project_context=project_context, verbose=cfg.verbose,
-        session_id=judge_session,
+        session_id=str(uuid.uuid4()),
     )
     worker_list = [
         Worker(
             f"w{i}", cfg, state,
             project_context=project_context, judge=judge,
-            session_id=worker_session,
+            session_id=str(uuid.uuid4()),
         )
         for i in range(num_workers)
     ]

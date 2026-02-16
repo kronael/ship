@@ -75,6 +75,7 @@ class ClaudeCodeClient:
         self.role = role
         self.session_id = session_id
         self._session_started = False
+        self._proc: asyncio.subprocess.Process | None = None
 
     def _build_args(self, prompt: str) -> list[str]:
         """build claude CLI arguments"""
@@ -117,18 +118,20 @@ class ClaudeCodeClient:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
+        self._proc = proc
 
         try:
             async with asyncio.timeout(timeout):
                 stdout, stderr = await proc.communicate()
         except TimeoutError:
-            try:
-                proc.kill()
-                await proc.wait()
-            except Exception as e:
-                logging.warning(f"error cleaning up process after timeout: {e}")
+            await self._kill_proc(proc)
             self._trace(len(prompt), 0, timeout, False)
             raise RuntimeError(f"claude CLI timeout after {timeout}s")
+        except asyncio.CancelledError:
+            await self._kill_proc(proc)
+            raise
+        finally:
+            self._proc = None
 
         if proc.returncode != 0:
             error = stderr.decode().strip() or stdout.decode().strip()
@@ -159,6 +162,7 @@ class ClaudeCodeClient:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
+        self._proc = proc
 
         output_lines = []
 
@@ -178,13 +182,14 @@ class ClaudeCodeClient:
 
                 await proc.wait()
         except TimeoutError:
-            try:
-                proc.kill()
-                await proc.wait()
-            except Exception as e:
-                logging.warning(f"error cleaning up process after timeout: {e}")
+            await self._kill_proc(proc)
             self._trace(0, 0, timeout, False)
             raise RuntimeError(f"claude CLI timeout after {timeout}s")
+        except asyncio.CancelledError:
+            await self._kill_proc(proc)
+            raise
+        finally:
+            self._proc = None
 
         if proc.returncode != 0:
             stderr_text = ""
@@ -199,6 +204,18 @@ class ClaudeCodeClient:
         self._trace(
             0, sum(len(l) for l in output_lines), timeout, True
         )
+
+    async def _kill_proc(
+        self, proc: asyncio.subprocess.Process
+    ) -> None:
+        """kill subprocess and wait for exit"""
+        try:
+            proc.kill()
+            await proc.wait()
+        except Exception as e:
+            logging.warning(
+                f"error cleaning up process: {e}"
+            )
 
     def _trace(
         self,
