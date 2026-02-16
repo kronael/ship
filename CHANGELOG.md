@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.3.0 (2026-02-16)
+
+### Changed
+- each worker gets unique session ID (no shared session collisions)
+- workers reuse sessions across tasks via --resume within same worker
+- default task_timeout: 1200s (was 120s)
+- default max_turns: 25 (was 5)
+- permission mode: bypassPermissions (was acceptEdits)
+- spec discovery: SPEC.md > spec.md > specs/*.md (was DESIGN.md)
+
+### Added
+- validator step before planning (rejects vague designs)
+- refiner (codex CLI) + replanner (claude CLI) after workers finish
+- three-level judge: per-task, batch refinement, full replanning
+- failed task auto-retry up to 10 times
+- SIGINT/SIGTERM handling with subprocess cleanup
+- CancelledError kills child processes before propagating
+- skills injection from ~/.claude/skills/
+- TUI status line with live progress
+- PROGRESS.md written on each judge poll
+- plan mode (-p, experimental)
+- verbose mode (-v)
+- trace logging to .ship/log/trace.jl
+
 ## 0.2.0 (2026-01-29)
 
 ### Changed

@@ -2,219 +2,198 @@
 
 ## overview
 
-ship implements planner-worker-judge pattern from cursor's blog post on scaling autonomous coding agents (https://cursor.com/blog/scaling-agents). goal-oriented execution: runs until satisfied, then exits.
+ship implements the planner-worker-judge pattern from
+[cursor's blog post](https://cursor.com/blog/scaling-agents)
+on scaling autonomous coding agents. goal-oriented execution:
+runs until satisfied, then exits.
 
 ```
-design.txt → Planner → [task, task, task] → Queue
-                                              ↓
-                              Worker ← Worker ← Worker ← Worker
-                                              ↓
-                                          State (JSON)
-                                              ↓
-                                           Judge → exit when complete
+SPEC.md -> Validator -> Planner -> [task, task, task] -> Queue
+                                                          |
+                                  Worker <- Worker <- Worker <- Worker
+                                                          |
+                                                     State (JSON)
+                                                          |
+                              Judge -> Refiner -> Replanner -> exit
 ```
 
 ## components
 
-### planner
+### validator (`validator.py`)
 
-reads design file, breaks into tasks using claude code CLI.
+checks design quality before planning. uses claude CLI to assess
+whether the spec is specific enough to execute. rejects vague
+designs to REJECTION.md with actionable gaps. accepted designs
+produce PROJECT.md with a brief project summary.
 
-runs once at startup. generates tasks with:
-- unique id (uuid)
-- description (e.g., "create function foo()")
-- empty files list (populated by worker)
-- status (pending)
+### planner (`planner.py`)
 
-uses ClaudeCodeClient to parse design file:
-- calls `claude -p <prompt> --model sonnet` with JSON output request
-- parses JSON array of tasks with descriptions
-- falls back to simple line-based parsing on error
-
-adds tasks to state and submits to queue.
+reads design, breaks into tasks using claude code CLI. runs once
+at startup. generates tasks with uuid, description, empty files
+list, and pending status. falls back to line-based parsing if
+JSON parsing fails. adds tasks to state and submits to queue.
 
 ### queue
 
-asyncio.Queue holding pending tasks. unbounded (no maxsize).
+asyncio.Queue holding pending tasks. unbounded. workers block on
+queue.get(). not persisted -- regenerated from state on
+continuation (`-c`).
 
-workers block on queue.get() until task available.
+### worker (`worker.py`)
 
-no persistence - regenerated from state on continuation.
+fetches tasks from queue, executes via claude CLI, updates state.
 
-### worker
+each worker gets its own unique session ID (uuid4). the session
+persists across tasks within the same worker via `--resume`,
+giving the worker memory of previous work without collisions
+between workers.
 
-fetches tasks from queue, executes them, updates state.
-
-execution flow:
+execution:
 1. mark task as running
-2. spawn `claude -p <task.description> --model sonnet` in current directory
-3. claude code has full tool access (read/write files, bash, grep, etc)
-4. mark task as completed with claude's stdout
+2. stream output from `claude -p <prompt> --model sonnet`
+3. detect "reached max turns" in output -> mark failed
+4. otherwise mark completed with output
 
-on error: mark task as failed with error message.
+workers run independently -- no inter-worker communication.
+skills from `~/.claude/skills/` are loaded once at init and
+injected into every task prompt.
 
-120s timeout per task (configurable via TASK_TIMEOUT or -t flag).
+### judge (`judge.py`)
 
-workers run independently - no inter-worker communication.
+three-level assessment: narrow, medium, wide.
 
-### judge
+polls state every 5s. on each cycle:
+- **narrow**: judges each newly completed task individually
+  (asks LLM "did this task actually work?")
+- retries failed tasks (up to 10 times)
+- when all tasks complete:
+  - **medium**: refiner creates follow-up tasks (up to 10 rounds)
+  - **wide**: replanner does full project assessment (up to 1 round)
+- if no new tasks from either, marks work complete and exits
 
-polls state every 5s.
+updates TUI status line and writes PROGRESS.md on each poll.
 
-checks completion: no pending/running tasks AND at least one task exists.
+### refiner (`refiner.py`)
 
-when complete:
-- marks work.is_complete = true
-- logs "goal satisfied"
-- exits (cancels worker tasks)
+uses codex CLI (not claude) to critique the batch. reads
+PROGRESS.md and task state, outputs `<task>...</task>` blocks
+for follow-up work. up to 10 refinement rounds per run.
 
-### state manager
+### replanner (`replanner.py`)
 
-persists to ./.ship/ as json files (project-local):
-- tasks.json: array of all tasks with metadata
-- work.json: design_file, goal_text, is_complete flag
+full project assessment against the original goal using claude
+CLI. reads PLAN.md, PROGRESS.md, and task state. fires only
+after refiner finds nothing. up to 1 replan round per run.
 
-async locks (asyncio.Lock) protect concurrent access.
+### state manager (`state.py`)
 
-loads existing state on startup for continuation.
+persists to `.ship/` as JSON:
+- `tasks.json`: all tasks with metadata
+- `work.json`: design_file, goal_text, is_complete, project_context
+
+asyncio.Lock protects concurrent access. state mutations: lock
+before read/write, save() under lock, copy before return.
+
+### claude code client (`claude_code.py`)
+
+wrapper around `claude` CLI subprocess. supports buffered and
+streaming modes.
+
+session reuse: accepts a session_id. first call uses
+`--session-id`, subsequent calls use `--resume`. each component
+(validator, planner, each worker, judge, replanner) gets its own
+session_id to avoid collisions.
+
+on timeout: kills subprocess. on cancellation (CancelledError):
+kills subprocess and re-raises. traces all calls to
+`.ship/log/trace.jl` (jsonlines).
+
+runs with `--permission-mode bypassPermissions` and a whitelist
+of common dev tools (bash commands, file operations).
 
 ## data flow
 
-1. main() parses args (design file or -c flag)
-2. if new run:
-   - planner.plan_once() generates tasks
+1. `main()` parses args, handles SIGINT/SIGTERM
+2. new run:
+   - validator assesses spec -> reject or accept
+   - planner generates tasks from spec + PROJECT.md
    - state.init_work() creates work state
-3. if continuation:
-   - state.reset_interrupted_tasks() resets running → pending
+3. continuation (`-c`):
+   - state.reset_interrupted_tasks() resets running -> pending
 4. populate queue from pending tasks
-5. workers pull from queue, execute, update state
-6. judge polls every 5s:
-   - if complete: mark work.is_complete, exit
-   - else: continue polling
-7. on judge exit: cancel workers, shutdown
+5. spawn workers (one asyncio task each, capped to pending count)
+6. workers pull from queue, execute, notify judge on completion
+7. judge polls every 5s:
+   - judges completed tasks, retries failures
+   - refines when batch complete, replans if refiner empty
+   - exits when satisfied
+8. main cancels workers, gathers, prints summary
 
 ## task lifecycle
 
-states (explicit enum in types_.py):
+states (enum in `types_.py`):
 - pending: created, not yet started
 - running: worker executing
 - completed: finished successfully
 - failed: error during execution
 
 transitions:
-- pending → running (worker.execute start)
-- running → completed (worker.execute success)
-- running → failed (worker.execute error)
-- running → pending (continuation after interruption)
+- pending -> running (worker picks up)
+- running -> completed (worker success)
+- running -> failed (error, timeout, max turns)
+- failed -> pending (judge retry, up to 10 times)
+- running -> pending (continuation after interruption)
 
-no retry logic - failed tasks stay failed.
+## concurrency
 
-## concurrency model
+all components run as asyncio tasks from main.
 
-all agents run as asyncio tasks spawned from main.
+- queue: asyncio.Queue (no locks needed)
+- state: asyncio.Lock
+- workers: independent, no coordination
+- judge: reads state, receives completion notifications
+- each worker/component owns its own claude CLI session
 
-coordination:
-- queue uses asyncio.Queue (no locks needed)
-- state manager uses asyncio.Lock
-- workers don't coordinate with each other
-- judge only reads state
+shutdown: judge exits -> main cancels workers -> gather with
+return_exceptions=True. SIGINT and SIGTERM both raise
+KeyboardInterrupt. CancelledError in workers/client kills child
+subprocesses before propagating.
 
-shutdown:
-- judge exits when complete
-- main() cancels worker tasks
-- gather with return_exceptions=True waits for cancellation
+## configuration
 
-no coordination between workers - eliminates cursor's lock bottleneck.
+precedence: CLI args > env vars > .env file > defaults
 
-## continuation model
-
-state tracks interrupted work:
-- work.json stores design_file and goal_text
-- running tasks reset to pending on startup
-- queue regenerated from pending tasks
-- workers continue from last checkpoint
-
-continuation flow:
-```bash
-# start work
-ship design.txt  # creates work.json, generates tasks
-
-# interrupt (ctrl-c)
-^C
-
-# continue
-ship -c  # loads work.json, resets running tasks, resumes
-```
-
-## persistence format
-
-tasks.json:
-```json
-[
-  {
-    "id": "uuid",
-    "description": "create function foo()",
-    "files": [],
-    "status": "completed",
-    "created_at": "2026-01-16T08:00:00Z",
-    "started_at": "2026-01-16T08:00:05Z",
-    "completed_at": "2026-01-16T08:00:06Z",
-    "result": "created foo() in main.py"
-  }
-]
-```
-
-work.json:
-```json
-{
-  "design_file": "design.txt",
-  "goal_text": "- Create function foo()\n- Add tests",
-  "is_complete": false
-}
-```
-
-## configuration precedence
-
-1. defaults (hardcoded in config.py)
-2. ./.env (project-local .env file, optional)
-3. environment variables (highest priority, override .env)
-
-uses python-dotenv to load .env files from project root only.
-no global config files - all config is project-local.
-
-defaults (all optional):
+defaults:
 - num_workers: 4
-- max_turns: 5 (agentic turns per task)
-- task_timeout: 120 (seconds)
+- max_turns: 25
+- task_timeout: 1200s
 - log_dir: .ship/log
 - data_dir: .ship
 
-## logging
+## file layout
 
-unix format: "Jan 18 10:34:26"
+```
+ship/
+  __main__.py    - entry point, click CLI, orchestration
+  types_.py      - Task, TaskStatus, WorkState
+  state.py       - StateManager with asyncio.Lock
+  config.py      - loads .env + env vars
+  claude_code.py - claude CLI wrapper
+  codex_cli.py   - codex CLI wrapper
+  planner.py     - design -> tasks
+  validator.py   - design quality check
+  worker.py      - task execution
+  judge.py       - completion monitoring + refinement
+  refiner.py     - codex-based follow-up tasks
+  replanner.py   - full reassessment
+  prompts.py     - all LLM prompt templates
+  skills.py      - loads ~/.claude/skills/
+  display.py     - TUI output + status line
+```
 
-logs to: .ship/log/ship.log (project-local)
+runtime state (`.ship/`, gitignored):
+- tasks.json, work.json
+- log/ship.log, log/trace.jl
 
-lowercase messages, capitalize error names only.
-
-## simplifications
-
-compared to cursor's blog post, this implementation omits:
-- continuous daemon mode (one-off execution instead)
-- http api (removed for simplicity)
-- multiple planners (single planner at startup)
-- cycles (runs once until complete)
-- git operations (checkout, commit, push)
-- queue persistence (regenerated from state)
-- conflict resolution
-- dynamic task prioritization
-- multi-node coordination
-
-implementation status:
-- workers: fully implemented using claude code CLI
-- planner: fully implemented using claude code CLI with fallback parsing
-- judge: fully implemented
-- state: fully implemented
-- claude_code.py: reusable client for calling claude code CLI
-
-these simplifications make the system suitable for learning the pattern, not production use.
+project root (LLM-visible):
+- SPEC.md, PLAN.md, PROGRESS.md, LOG.md, PROJECT.md

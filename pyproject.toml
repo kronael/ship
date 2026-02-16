@@ -1,6 +1,6 @@
 [project]
 name = "ship"
-version = "0.3.0"
+version = "0.3.1"
 description = "autonomous coding agent using planner-worker-judge pattern"
 readme = "README.md"
 requires-python = ">=3.12"
