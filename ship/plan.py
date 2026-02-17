@@ -201,7 +201,7 @@ async def _run_spec_phase(
             component_detail=comp_detail,
             spec_path=spec_path,
         )
-        await client.execute(prompt, timeout=180)
+        await client.execute(prompt, timeout=180)  # returns tuple, ignore
         click.echo(f"  wrote {spec_path}")
         spec_files.append(spec_path)
 
@@ -221,7 +221,7 @@ async def _run_phases_phase(
         components=components,
         spec_files=", ".join(spec_files),
     )
-    response = await client.execute(prompt, timeout=120)
+    response, _ = await client.execute(prompt, timeout=120)
     click.echo(f"\n{response}")
 
 

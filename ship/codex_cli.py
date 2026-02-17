@@ -69,16 +69,17 @@ class CodexClient:
             stderr=asyncio.subprocess.PIPE,
         )
 
+        timed_out = False
         try:
             async with asyncio.timeout(timeout):
                 stdout, stderr = await proc.communicate(input=prompt.encode())
         except TimeoutError:
+            timed_out = True
             try:
                 proc.kill()
                 await proc.wait()
             except Exception as e:
                 logging.warning(f"error cleaning up process after timeout: {e}")
-            raise RuntimeError(f"codex CLI timeout after {timeout}s")
 
         try:
             output_text = Path(output_path).read_text().strip()
@@ -89,6 +90,15 @@ class CodexClient:
                 Path(output_path).unlink(missing_ok=True)
             except OSError:
                 pass
+
+        if timed_out:
+            if output_text:
+                logging.warning(
+                    f"codex CLI timeout after {timeout}s, "
+                    f"returning partial output ({len(output_text)} chars)"
+                )
+                return output_text
+            raise RuntimeError(f"codex CLI timeout after {timeout}s")
 
         if proc.returncode != 0:
             error = stderr.decode().strip() or stdout.decode().strip()

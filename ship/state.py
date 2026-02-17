@@ -47,6 +47,12 @@ class StateManager:
                             )
                         if "retries" not in task_data:
                             task_data["retries"] = 0
+                        if "session_id" not in task_data:
+                            task_data["session_id"] = ""
+                        if "depends_on" not in task_data:
+                            task_data["depends_on"] = []
+                        if "followups" not in task_data:
+                            task_data["followups"] = []
                         task = Task(**task_data)
                         task.status = TaskStatus(task_data["status"])
                         self.tasks[task.id] = task
@@ -119,10 +125,15 @@ class StateManager:
         status: TaskStatus,
         error: str = "",
         result: str = "",
+        session_id: str = "",
+        followups: list[str] | None = None,
     ) -> None:
         async with self.lock:
             if task_id not in self.tasks:
-                logging.warning(f"attempted to update non-existent task: {task_id}")
+                logging.warning(
+                    f"attempted to update non-existent"
+                    f" task: {task_id}"
+                )
                 return
 
             task = self.tasks[task_id]
@@ -133,8 +144,15 @@ class StateManager:
                 task.error = error
             if result:
                 task.result = result
+            if session_id:
+                task.session_id = session_id
+            if followups:
+                task.followups = followups
 
-            if old_status is not TaskStatus.RUNNING and status is TaskStatus.RUNNING:
+            if (
+                old_status is not TaskStatus.RUNNING
+                and status is TaskStatus.RUNNING
+            ):
                 task.started_at = datetime.now()
 
             if status in [TaskStatus.COMPLETED, TaskStatus.FAILED]:
@@ -181,6 +199,31 @@ class StateManager:
             task.started_at = None
             task.completed_at = None
             self._save_tasks()
+
+    async def cascade_failure(
+        self, task_id: str
+    ) -> list[str]:
+        """mark tasks that depend_on task_id as FAILED"""
+        cascaded: list[str] = []
+        async with self.lock:
+            for task in self.tasks.values():
+                if (
+                    task_id in task.depends_on
+                    and task.status in [
+                        TaskStatus.PENDING,
+                        TaskStatus.RUNNING,
+                    ]
+                ):
+                    task.status = TaskStatus.FAILED
+                    task.error = (
+                        f"cascade: dependency {task_id[:8]}"
+                        f" failed"
+                    )
+                    task.completed_at = datetime.now()
+                    cascaded.append(task.id)
+            if cascaded:
+                self._save_tasks()
+        return cascaded
 
     async def reset_interrupted_tasks(self) -> None:
         """reset running tasks to pending on startup (continuation)"""

@@ -261,7 +261,8 @@ THEN: Return ONLY this XML:
 technologies</context>
 <tasks>
 <task>Create go.mod with module name and dependencies</task>
-<task>Implement HTTP server with health endpoint</task>
+<task depends="1">Implement HTTP server with health endpoint</task>
+<task depends="1,2">Write integration tests for health endpoint</task>
 </tasks>
 </project>
 
@@ -273,7 +274,9 @@ large features into smaller subtasks
 - Task description starts with a verb (Create, Add, Implement, Write)
 - Skip explanations, examples, documentation
 - Consolidate related items when sensible, but prefer smaller tasks \
-over large ones"""
+over large ones
+- Use depends="N" or depends="N,M" to declare dependencies on \
+earlier tasks (1-indexed). Tasks without depends can run in parallel"""
 
 WORKER = """\
 {context}\
@@ -284,7 +287,16 @@ will be retried automatically. Focus on making progress.
 Task: {description}
 
 When done, append a 1-line summary to LOG.md (create if missing). \
-Format: `- <what you shipped>`. Keep it brief."""
+Format: `- <what you shipped>`. Keep it brief.
+
+After your LOG.md entry, output this structured block:
+<status>done</status>
+
+If you could NOT fully complete the task, output:
+<status>partial</status>
+<followups>
+<task>description of remaining work</task>
+</followups>"""
 
 JUDGE_TASK = """\
 A worker just completed this task:
@@ -309,7 +321,7 @@ Project: {project_context}
 Completed tasks:
 {completed_summary}
 
-Failed tasks:
+Failed tasks (with session IDs for resume):
 {failed_summary}
 
 Questions:
@@ -317,10 +329,12 @@ Questions:
 2. Do failed tasks need alternative approaches?
 3. Anything the judge flagged as incomplete?
 
-If follow-up tasks are needed, output them. If done, output empty.
+If follow-up tasks are needed, output them. For tasks that should \
+resume a failed session, include the session attribute:
 
 <tasks>
-<task>description of follow-up work</task>
+<task session="abc-123">retry with different approach</task>
+<task>description of new follow-up work</task>
 </tasks>
 
 Or if complete:

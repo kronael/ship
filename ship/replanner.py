@@ -90,7 +90,9 @@ class Replanner:
             display.event("  replanner: full assessment...")
 
         try:
-            result = await self.claude.execute(prompt, timeout=90)
+            result, _ = await self.claude.execute(
+                prompt, timeout=90
+            )
 
             if self.verbose:
                 display.event(

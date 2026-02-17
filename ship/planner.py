@@ -61,7 +61,9 @@ class Planner:
             print(f"{'='*60}\n")
 
         try:
-            result = await self.claude.execute(prompt, timeout=60)
+            result, _ = await self.claude.execute(
+                prompt, timeout=180
+            )
 
             if self.verbose:
                 print(f"\n{'='*60}")
@@ -84,19 +86,43 @@ class Planner:
             if context_match else ""
         )
 
-        tasks = []
-        for desc in re.findall(
-            r"<task>(.*?)</task>", text, re.DOTALL
+        tasks: list[Task] = []
+        dep_map: list[list[int]] = []  # per-task indices
+
+        for m in re.finditer(
+            r'<task(?:\s+depends="([^"]*)")?\s*>'
+            r"(.*?)</task>",
+            text,
+            re.DOTALL,
         ):
-            desc = desc.strip()
-            if desc and len(desc) > 5:
-                tasks.append(
-                    Task(
-                        id=str(uuid.uuid4()),
-                        description=desc,
-                        files=[],
-                        status=TaskStatus.PENDING,
-                    )
+            depends_str = m.group(1) or ""
+            desc = m.group(2).strip()
+            if not desc or len(desc) <= 5:
+                continue
+
+            indices: list[int] = []
+            if depends_str:
+                for part in depends_str.split(","):
+                    part = part.strip()
+                    if part.isdigit():
+                        indices.append(int(part))
+
+            tasks.append(
+                Task(
+                    id=str(uuid.uuid4()),
+                    description=desc,
+                    files=[],
+                    status=TaskStatus.PENDING,
                 )
+            )
+            dep_map.append(indices)
+
+        # resolve 1-indexed task indices to UUIDs
+        for i, indices in enumerate(dep_map):
+            for idx in indices:
+                if 1 <= idx <= len(tasks) and idx - 1 != i:
+                    tasks[i].depends_on.append(
+                        tasks[idx - 1].id
+                    )
 
         return context, tasks

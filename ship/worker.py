@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 
 from typing import TYPE_CHECKING
 
-from ship.claude_code import ClaudeCodeClient
+from ship.claude_code import ClaudeCodeClient, ClaudeError
 from ship.config import Config
 from ship.display import display, log_entry
 from ship.prompts import WORKER
@@ -67,27 +68,47 @@ class Worker:
         await self.state.update_task(task.id, TaskStatus.RUNNING)
 
         try:
-            result = await self._do_work(task)
+            result, sid = await self._do_work(task)
 
             if "reached max turns" in result.lower():
                 await self.state.update_task(
                     task.id, TaskStatus.FAILED,
                     error="reached max turns",
+                    session_id=sid,
                 )
                 log_entry(
-                    f"fail (max turns): {task.description[:60]}"
+                    f"fail (max turns):"
+                    f" {task.description[:60]}"
                 )
                 display.event(
-                    f"  [{self.worker_id}] max turns - incomplete"
+                    f"  [{self.worker_id}]"
+                    f" max turns - incomplete"
                 )
-                logging.warning(
-                    f"{self.worker_id} max turns: "
-                    f"{task.description}"
+                return
+
+            # parse structured output
+            status, followups = self._parse_output(result)
+
+            if status == "partial":
+                await self.state.update_task(
+                    task.id, TaskStatus.FAILED,
+                    error="worker reported partial",
+                    result=result,
+                    session_id=sid,
+                    followups=followups,
+                )
+                log_entry(
+                    f"partial: {task.description[:60]}"
+                )
+                display.event(
+                    f"  [{self.worker_id}] partial"
                 )
                 return
 
             await self.state.update_task(
-                task.id, TaskStatus.COMPLETED, result=result
+                task.id, TaskStatus.COMPLETED,
+                result=result,
+                session_id=sid,
             )
             if self.judge:
                 updated = Task(
@@ -96,18 +117,22 @@ class Worker:
                     files=task.files,
                     status=TaskStatus.COMPLETED,
                     result=result,
+                    session_id=sid,
                 )
                 self.judge.notify_completed(updated)
             log_entry(f"done: {task.description[:60]}")
             display.event(f"  [{self.worker_id}] done")
             logging.info(
-                f"{self.worker_id} completed: {task.description}"
+                f"{self.worker_id} completed:"
+                f" {task.description}"
             )
 
-        except RuntimeError as e:
+        except ClaudeError as e:
             error_msg = str(e) if str(e) else type(e).__name__
             await self.state.update_task(
-                task.id, TaskStatus.FAILED, error=error_msg
+                task.id, TaskStatus.FAILED,
+                error=error_msg,
+                session_id=e.session_id,
             )
             if "timeout" in error_msg.lower():
                 display.event(
@@ -120,7 +145,8 @@ class Worker:
                 )
             else:
                 display.event(
-                    f"  [{self.worker_id}] error: {error_msg}"
+                    f"  [{self.worker_id}]"
+                    f" error: {error_msg}"
                 )
                 logging.error(
                     f"{self.worker_id} failed: "
@@ -144,8 +170,13 @@ class Worker:
             if self.judge:
                 self.judge.clear_worker_task(self.worker_id)
 
-    async def _do_work(self, task: Task) -> str:
-        """execute task by calling claude code CLI"""
+    async def _do_work(
+        self, task: Task
+    ) -> tuple[str, str]:
+        """execute task via claude code CLI
+
+        returns: (output, session_id) tuple
+        """
         context = ""
         if self.project_context:
             context = f"Project: {self.project_context}\n\n"
@@ -154,7 +185,16 @@ class Worker:
         if self.skills:
             skills_text = format_skills_for_prompt(self.skills)
             if skills_text:
-                skills = f"{skills_text}\n\nUse the relevant skills above for this task.\n\n"
+                skills = (
+                    f"{skills_text}\n\n"
+                    f"Use the relevant skills above"
+                    f" for this task.\n\n"
+                )
+
+        # resume from previous session if available
+        if task.session_id and not self.claude.session_id:
+            self.claude.session_id = task.session_id
+            self.claude._session_started = True
 
         prompt = WORKER.format(
             context=context,
@@ -170,16 +210,43 @@ class Worker:
             display.event(prompt)
             display.event(f"{'='*60}\n")
 
-        output_lines = []
-        async for line in self.claude.execute_stream(
+        output, sid = await self.claude.execute(
             prompt, timeout=self.cfg.task_timeout
-        ):
-            if line.strip():
-                if self.cfg.verbose:
-                    display.event(f"   {line}")
-            output_lines.append(line)
+        )
 
         if self.cfg.verbose:
-            display.event(f"\n{'='*60}")
+            display.event(f"  output: {len(output)} chars")
 
-        return "\n".join(output_lines)
+        return output, sid
+
+    def _parse_output(
+        self, text: str
+    ) -> tuple[str, list[str]]:
+        """parse structured worker output
+
+        returns: (status, followup_descriptions)
+        """
+        status = "done"
+        m = re.search(
+            r"<status>(done|partial)</status>", text
+        )
+        if m:
+            status = m.group(1)
+
+        followups: list[str] = []
+        block = re.search(
+            r"<followups>(.*?)</followups>",
+            text,
+            re.DOTALL,
+        )
+        if block:
+            for desc in re.findall(
+                r"<task>(.*?)</task>",
+                block.group(1),
+                re.DOTALL,
+            ):
+                desc = desc.strip()
+                if desc:
+                    followups.append(desc)
+
+        return status, followups

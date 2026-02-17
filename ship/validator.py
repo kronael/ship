@@ -51,7 +51,9 @@ class Validator:
             print(prompt)
             print(f"{'='*60}\n")
 
-        result = await self.claude.execute(prompt, timeout=60)
+        result, _ = await self.claude.execute(
+            prompt, timeout=180
+        )
 
         if self.verbose:
             print(f"\n{'='*60}")

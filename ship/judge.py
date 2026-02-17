@@ -76,7 +76,9 @@ class Judge:
             display.event(f"  judging: {task.description[:50]}")
 
         try:
-            await self.claude.execute(prompt, timeout=45)
+            await self.claude.execute(
+                prompt, timeout=45
+            )
         except RuntimeError as e:
             logging.warning(f"judge task failed: {e}")
             log_entry(f"judge skip: {task.description[:40]}")
@@ -136,19 +138,43 @@ class Judge:
                 all_tasks = await self.state.get_all_tasks()
                 self._update_tui(all_tasks)
 
-                # retry failed tasks
-                retryable = [
+                # retry or cascade failed tasks
+                failed = [
                     t for t in all_tasks
                     if t.status is TaskStatus.FAILED
-                    and t.retries < MAX_RETRIES
                 ]
-                for task in retryable:
+                for task in failed:
+                    if task.retries >= MAX_RETRIES:
+                        # exhausted retries — cascade
+                        cascaded = (
+                            await self.state.cascade_failure(
+                                task.id
+                            )
+                        )
+                        if cascaded:
+                            log_entry(
+                                f"cascade: {task.id[:8]}"
+                                f" -> {len(cascaded)} tasks"
+                            )
+                            display.event(
+                                f"  cascade {task.id[:8]}"
+                                f" -> {len(cascaded)} deps"
+                            )
+                        continue
+                    # still retryable
+                    if task.error == f"cascade: dependency {task.id[:8]} failed":
+                        continue
+                    if task.error.startswith("cascade:"):
+                        continue
                     await self.state.retry_task(task.id)
                     await self.queue.put(task)
-                    log_entry(f"retry: {task.description[:50]}")
+                    log_entry(
+                        f"retry: {task.description[:50]}"
+                    )
                     display.event(
                         f"  retry {task.id[:8]} "
-                        f"({task.retries + 1}/{MAX_RETRIES})"
+                        f"({task.retries + 1}"
+                        f"/{MAX_RETRIES})"
                     )
 
                 if not await self.state.is_complete():
