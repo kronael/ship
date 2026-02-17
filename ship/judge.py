@@ -13,6 +13,12 @@ from ship.types_ import Task, TaskStatus
 
 
 MAX_RETRIES = 10
+CASCADE_PREFIX = "cascade:"
+
+
+def is_cascade_error(error: str) -> bool:
+    """cascade errors are set by state.cascade_failure"""
+    return error.startswith(CASCADE_PREFIX)
 
 
 class Judge:
@@ -144,8 +150,11 @@ class Judge:
                     if t.status is TaskStatus.FAILED
                 ]
                 for task in failed:
+                    # skip cascade failures (not retryable)
+                    if is_cascade_error(task.error):
+                        continue
                     if task.retries >= MAX_RETRIES:
-                        # exhausted retries — cascade
+                        # exhausted retries -- cascade
                         cascaded = (
                             await self.state.cascade_failure(
                                 task.id
@@ -160,11 +169,6 @@ class Judge:
                                 f"  cascade {task.id[:8]}"
                                 f" -> {len(cascaded)} deps"
                             )
-                        continue
-                    # still retryable
-                    if task.error == f"cascade: dependency {task.id[:8]} failed":
-                        continue
-                    if task.error.startswith("cascade:"):
                         continue
                     await self.state.retry_task(task.id)
                     await self.queue.put(task)

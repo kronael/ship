@@ -203,24 +203,31 @@ class StateManager:
     async def cascade_failure(
         self, task_id: str
     ) -> list[str]:
-        """mark tasks that depend_on task_id as FAILED"""
+        """recursively mark tasks depending on task_id as FAILED
+
+        if A->B->C, failing A cascades to B and C.
+        """
         cascaded: list[str] = []
         async with self.lock:
-            for task in self.tasks.values():
-                if (
-                    task_id in task.depends_on
-                    and task.status in [
-                        TaskStatus.PENDING,
-                        TaskStatus.RUNNING,
-                    ]
-                ):
-                    task.status = TaskStatus.FAILED
-                    task.error = (
-                        f"cascade: dependency {task_id[:8]}"
-                        f" failed"
-                    )
-                    task.completed_at = datetime.now()
-                    cascaded.append(task.id)
+            queue = [task_id]
+            while queue:
+                failed_id = queue.pop(0)
+                for task in self.tasks.values():
+                    if (
+                        failed_id in task.depends_on
+                        and task.status in (
+                            TaskStatus.PENDING,
+                            TaskStatus.RUNNING,
+                        )
+                    ):
+                        task.status = TaskStatus.FAILED
+                        task.error = (
+                            f"cascade: dependency"
+                            f" {failed_id[:8]} failed"
+                        )
+                        task.completed_at = datetime.now()
+                        cascaded.append(task.id)
+                        queue.append(task.id)
             if cascaded:
                 self._save_tasks()
         return cascaded
