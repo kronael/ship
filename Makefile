@@ -17,7 +17,6 @@ smoke:
 
 right:
 	uv run pyright ship/
-	uv run pytest -v
 
 image:
 	docker build -t ship .

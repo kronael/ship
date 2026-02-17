@@ -19,12 +19,13 @@ class Validator:
 
     def __init__(
         self,
-        verbose: bool = False,
+        verbosity: int = 1,
         session_id: str | None = None,
     ):
-        self.verbose = verbose
+        self.verbosity = verbosity
         self.claude = ClaudeCodeClient(
-            model="sonnet", role="validator",
+            model="sonnet",
+            role="validator",
             session_id=session_id,
         )
 
@@ -36,42 +37,35 @@ class Validator:
         context_section = ""
         if context:
             joined = "\n".join(f"- {c}" for c in context)
-            context_section = (
-                f"\nAdditional context:\n{joined}\n"
-            )
+            context_section = f"\nAdditional context:\n{joined}\n"
         prompt = VALIDATOR.format(
             design_text=design_text,
             context_section=context_section,
         )
 
-        if self.verbose:
-            print(f"\n{'='*60}")
+        if self.verbosity >= 3:
+            print(f"\n{'=' * 60}")
             print("VALIDATOR PROMPT:")
-            print(f"{'='*60}")
+            print(f"{'=' * 60}")
             print(prompt)
-            print(f"{'='*60}\n")
+            print(f"{'=' * 60}\n")
 
         result, _ = await self.claude.execute(
             prompt, timeout=180
         )
 
-        if self.verbose:
-            print(f"\n{'='*60}")
+        if self.verbosity >= 3:
+            print(f"\n{'=' * 60}")
             print("VALIDATOR RESPONSE:")
-            print(f"{'='*60}")
+            print(f"{'=' * 60}")
             print(result)
-            print(f"{'='*60}\n")
+            print(f"{'=' * 60}\n")
 
         return self._parse(result)
 
     def _parse(self, text: str) -> ValidationResult:
-        decision_match = re.search(
-            r"<decision>(.*?)</decision>", text, re.DOTALL
-        )
-        decision = (
-            decision_match.group(1).strip().lower()
-            if decision_match else ""
-        )
+        decision_match = re.search(r"<decision>(.*?)</decision>", text, re.DOTALL)
+        decision = decision_match.group(1).strip().lower() if decision_match else ""
         accept = decision == "accept"
 
         gaps = []
@@ -80,14 +74,7 @@ class Validator:
             if gap:
                 gaps.append(gap)
 
-        project_match = re.search(
-            r"<project>(.*?)</project>", text, re.DOTALL
-        )
-        project_md = (
-            project_match.group(1).strip()
-            if project_match else ""
-        )
+        project_match = re.search(r"<project>(.*?)</project>", text, re.DOTALL)
+        project_md = project_match.group(1).strip() if project_match else ""
 
-        return ValidationResult(
-            accept=accept, gaps=gaps, project_md=project_md
-        )
+        return ValidationResult(accept=accept, gaps=gaps, project_md=project_md)

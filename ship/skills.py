@@ -41,7 +41,9 @@ def load_skills(skills_dir: Path | None = None) -> dict[str, str]:
     return skills
 
 
-def format_skills_for_prompt(skills: dict[str, str], relevant: list[str] | None = None) -> str:
+def format_skills_for_prompt(
+    skills: dict[str, str], relevant: list[str] | None = None
+) -> str:
     """format skills as prompt context
 
     if relevant is provided, only include those skills

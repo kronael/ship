@@ -13,61 +13,48 @@ from ship.types_ import Task, TaskStatus
 
 
 class Refiner:
-    """codex critiques the batch using PROGRESS.md + task state"""
 
     def __init__(
         self,
         state: StateManager,
         project_context: str = "",
-        verbose: bool = False,
+        verbosity: int = 1,
     ):
         self.state = state
         self.project_context = project_context
-        self.verbose = verbose
+        self.verbosity = verbosity
         self.codex = CodexClient()
 
     async def refine(self) -> list[Task]:
         all_tasks = await self.state.get_all_tasks()
-
-        completed = [
-            t for t in all_tasks
-            if t.status is TaskStatus.COMPLETED
-        ]
-        failed = [
-            t for t in all_tasks
-            if t.status is TaskStatus.FAILED
-        ]
+        completed = [t for t in all_tasks if t.status is TaskStatus.COMPLETED]
+        failed = [t for t in all_tasks if t.status is TaskStatus.FAILED]
 
         if not completed and not failed:
             return []
 
-        progress = ""
         try:
             progress = Path("PROGRESS.md").read_text()
         except OSError:
-            pass
+            progress = ""
 
-        completed_summary = "\n".join(
-            f"- [DONE] {t.description}" for t in completed[-10:]
-        ) or "None"
+        completed_summary = (
+            "\n".join(f"- [DONE] {t.description}" for t in completed[-10:]) or "None"
+        )
 
         fail_lines = []
         for t in failed[-5:]:
-            parts = [f"- [FAIL] {t.description}: {t.error}"]
+            line = f"- [FAIL] {t.description}: {t.error}"
             if t.session_id:
-                parts.append(f"  (session: {t.session_id})")
+                line += f"  (session: {t.session_id})"
             if t.followups:
-                parts.append(
-                    f"  (followups: {t.followups})"
-                )
-            fail_lines.append(" ".join(parts))
+                line += f"  (followups: {t.followups})"
+            fail_lines.append(line)
         failed_summary = "\n".join(fail_lines) or "None"
 
         progress_section = (
-            f"PROGRESS.md (includes judge verdicts):\n{progress}"
-            if progress else ""
+            f"PROGRESS.md (includes judge verdicts):\n{progress}" if progress else ""
         )
-
         prompt = REFINER.format(
             project_context=self.project_context,
             progress_section=progress_section,
@@ -75,30 +62,22 @@ class Refiner:
             failed_summary=failed_summary,
         )
 
-        if self.verbose:
-            display.event(f"  refiner prompt: {len(prompt)} chars")
+        if self.verbosity >= 3:
+            display.event(f"  refiner prompt: {len(prompt)} chars", min_level=3)
         else:
             display.event("  refiner: codex critiquing...")
 
         try:
             result = await self.codex.execute(prompt, timeout=300)
-
-            if self.verbose:
-                display.event(
-                    f"  refiner response: {len(result)} chars"
-                )
-
+            if self.verbosity >= 3:
+                display.event(f"  refiner response: {len(result)} chars", min_level=3)
             new_tasks = self._parse_tasks(result)
             for task in new_tasks:
                 await self.state.add_task(task)
-                logging.info(
-                    f"refiner created task: {task.description}"
-                )
-
+                logging.info(f"refiner created task: {task.description}")
             if not new_tasks:
                 display.event("  refiner: no follow-up tasks")
             return new_tasks
-
         except RuntimeError as e:
             logging.warning(f"refiner failed: {e}")
             display.event(f"  refiner failed: {e}")

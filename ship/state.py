@@ -10,10 +10,9 @@ from pathlib import Path
 from ship.types_ import Task, TaskStatus, WorkState
 
 
-
-
 class StateManager:
     """manages task and work state with async locks for safe concurrent access"""
+
     def __init__(self, data_dir: str):
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -64,9 +63,7 @@ class StateManager:
                 with open(self.work_file) as f:
                     data = json.load(f)
                     if "started_at" in data:
-                        data["started_at"] = datetime.fromisoformat(
-                            data["started_at"]
-                        )
+                        data["started_at"] = datetime.fromisoformat(data["started_at"])
                     if "last_updated_at" in data:
                         data["last_updated_at"] = datetime.fromisoformat(
                             data["last_updated_at"]
@@ -83,9 +80,7 @@ class StateManager:
     def _save_tasks(self) -> None:
         try:
             with open(self.tasks_file, "w") as f:
-                json.dump(
-                    [t.to_dict() for t in self.tasks.values()], f, indent=2
-                )
+                json.dump([t.to_dict() for t in self.tasks.values()], f, indent=2)
         except OSError as e:
             raise RuntimeError(f"failed to save tasks: {e}") from e
 
@@ -109,6 +104,12 @@ class StateManager:
         async with self.lock:
             if self.work:
                 self.work.project_context = context
+                self._save_work()
+
+    async def set_execution_mode(self, mode: str) -> None:
+        async with self.lock:
+            if self.work:
+                self.work.execution_mode = mode
                 self._save_work()
 
     async def add_task(self, task: Task) -> bool:
@@ -169,7 +170,9 @@ class StateManager:
 
     async def get_pending_tasks(self) -> list[Task]:
         async with self.lock:
-            return [copy(t) for t in self.tasks.values() if t.status is TaskStatus.PENDING]
+            return [
+                copy(t) for t in self.tasks.values() if t.status is TaskStatus.PENDING
+            ]
 
     async def get_all_tasks(self) -> list[Task]:
         async with self.lock:
@@ -182,7 +185,8 @@ class StateManager:
             if self.work.is_complete:
                 return True
             pending = [
-                t for t in self.tasks.values()
+                t
+                for t in self.tasks.values()
                 if t.status is TaskStatus.PENDING or t.status is TaskStatus.RUNNING
             ]
             return len(pending) == 0 and len(self.tasks) > 0

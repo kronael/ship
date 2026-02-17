@@ -3,6 +3,7 @@
 each phase launches an interactive claude session via fork+exec.
 state accumulates in .ship/plan/. user confirms between phases.
 """
+
 from __future__ import annotations
 
 import os
@@ -55,9 +56,7 @@ def _confirm(msg: str) -> bool:
         sys.exit(130)
 
 
-def _build_phase_prompt(
-    name: str, context: tuple[str, ...]
-) -> str:
+def _build_phase_prompt(name: str, context: tuple[str, ...]) -> str:
     """build system prompt for a phase, baking in previous outputs"""
     ctx = ""
     if context:
@@ -81,12 +80,8 @@ def _build_phase_prompt(
     output_dir = f"write your output to .ship/plan/{name}.md"
 
     prompts = {
-        "understand": PLAN_UNDERSTAND.format(
-            context_section=ctx
-        ),
-        "research": PLAN_RESEARCH.format(
-            summary=summary or "(not yet written)"
-        ),
+        "understand": PLAN_UNDERSTAND.format(context_section=ctx),
+        "research": PLAN_RESEARCH.format(summary=summary or "(not yet written)"),
         "simplify": PLAN_SIMPLIFY.format(
             summary=summary or "(not yet written)",
             research=research or "(not yet written)",
@@ -118,7 +113,8 @@ def _launch_claude(
     if pid == 0:
         args = [
             "claude",
-            "--append-system-prompt", system_prompt,
+            "--append-system-prompt",
+            system_prompt,
         ]
         if resume:
             args.extend(["--resume", session_id])
@@ -137,7 +133,8 @@ def _make_noninteractive_client(
     session_id: str | None = None,
 ) -> ClaudeCodeClient:
     return ClaudeCodeClient(
-        model="sonnet", role="planner",
+        model="sonnet",
+        role="planner",
         session_id=session_id,
     )
 
@@ -236,12 +233,8 @@ async def run_plan(context: tuple[str, ...]) -> None:
 
     # phases 1-4: interactive claude sessions
     interactive_phases = [p for p in PHASES if p[3]]
-    for i, (name, desc, output_file, _) in enumerate(
-        interactive_phases
-    ):
-        _banner(
-            f"phase {i + 1}/{len(PHASES)}", desc
-        )
+    for i, (name, desc, output_file, _) in enumerate(interactive_phases):
+        _banner(f"phase {i + 1}/{len(PHASES)}", desc)
 
         session_id = str(uuid.uuid4())
         launched = False
@@ -249,21 +242,16 @@ async def run_plan(context: tuple[str, ...]) -> None:
         while True:
             prompt = _build_phase_prompt(name, context)
             _launch_claude(
-                prompt, session_id, resume=launched,
+                prompt,
+                session_id,
+                resume=launched,
             )
             launched = True
 
-            if output_file and not (
-                PLAN_DIR / f"{output_file}.md"
-            ).exists():
-                click.echo(
-                    f"warning: .ship/plan/{output_file}.md "
-                    f"not written yet"
-                )
+            if output_file and not (PLAN_DIR / f"{output_file}.md").exists():
+                click.echo(f"warning: .ship/plan/{output_file}.md not written yet")
 
-            _show_phase_summary(
-                output_file if output_file else name
-            )
+            _show_phase_summary(output_file if output_file else name)
 
             if _confirm("continue to next phase?"):
                 break

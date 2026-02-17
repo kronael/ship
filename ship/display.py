@@ -1,62 +1,122 @@
 from __future__ import annotations
 
+import shutil
 import sys
 from datetime import datetime
 
+from ship.types_ import TaskStatus
+
 
 class Display:
-    """tui display with rewriting status line
+    """pacman-style multi-line task panel
 
-    when stdout is a tty, the bottom line rewrites in place (like wget).
-    events print above the status line as permanent log entries.
-    when not a tty, falls back to plain print.
+    tty: redraws panel in place using ANSI escape codes.
+    non-tty: prints one line per state change.
+    quiet (verbosity=0): errors only.
     """
 
     def __init__(self):
         self.is_tty = sys.stdout.isatty()
-        self._status = ""
-        self._status_len = 0
-
-    def event(self, msg: str) -> None:
-        """print a permanent log line above the status line"""
-        if self.is_tty and self._status:
-            sys.stdout.write(f"\r\033[K{msg}\n")
-            sys.stdout.write(f"\r\033[K{self._status}")
-            sys.stdout.flush()
-        else:
-            print(msg)
-
-    def status(self, msg: str) -> None:
-        """rewrite the status line in place (tty only)"""
-        self._status = msg
-        if self.is_tty:
-            try:
-                import shutil
-                cols = shutil.get_terminal_size().columns
-                if len(msg) > cols:
-                    msg = msg[:cols - 1]
-            except Exception:
-                pass
-            sys.stdout.write(f"\r\033[K{msg}")
-            sys.stdout.flush()
-        else:
-            print(msg)
-
-    def clear_status(self) -> None:
-        """clear the status line"""
-        self._status = ""
-        if self.is_tty:
-            sys.stdout.write("\r\033[K")
-            sys.stdout.flush()
+        self.verbosity = 1
+        self._tasks: list[tuple[str, TaskStatus, str]] = []
+        self._phase = "executing"
+        self._panel_lines = 0
 
     def banner(self, msg: str) -> None:
-        """print a line that's always visible (bypasses status)"""
-        if self.is_tty and self._status:
-            sys.stdout.write(f"\r\033[K{msg}\n")
-            sys.stdout.write(f"\r\033[K{self._status}")
-            sys.stdout.flush()
+        """print header + separator"""
+        if self.verbosity < 1:
+            return
+        cols = self._cols()
+        print(msg)
+        print("\u2500" * min(len(msg), cols))
+
+    def set_tasks(
+        self,
+        tasks: list[tuple[str, TaskStatus, str]],
+    ) -> None:
+        self._tasks = tasks
+
+    def set_phase(self, phase: str) -> None:
+        self._phase = phase
+
+    def refresh(self) -> None:
+        """redraw the task panel in place (tty only)"""
+        if self.verbosity < 1 or not self.is_tty or not self._tasks:
+            return
+
+        cols = self._cols()
+        total = len(self._tasks)
+        done = sum(1 for _, s, _ in self._tasks if s is TaskStatus.COMPLETED)
+        fail = sum(1 for _, s, _ in self._tasks if s is TaskStatus.FAILED)
+        run = sum(1 for _, s, _ in self._tasks if s is TaskStatus.RUNNING)
+
+        lines: list[str] = [""]
+        w = len(str(total))
+        for i, (desc, status, worker) in enumerate(self._tasks):
+            tag = f"[{i + 1:>{w}}/{total}]"
+            ind = {
+                TaskStatus.COMPLETED: "done",
+                TaskStatus.FAILED: "FAIL",
+                TaskStatus.RUNNING: f"{worker} ..." if worker else "...",
+            }.get(status, " -")
+            pre = f"  {tag} "
+            suf = f"  {ind}"
+            avail = cols - len(pre) - len(suf)
+            if avail > 0 and len(desc) > avail:
+                desc = desc[: avail - 1] + "\u2026"
+            lines.append(f"{pre}{desc:<{max(avail, 0)}}{suf}")
+
+        lines.append("")
+        parts = [f"{done}/{total} ({done * 100 // total}%)"]
+        if run:
+            parts.append(f"{run} running")
+        if fail:
+            parts.append(f"{fail} failed")
+        lines.append(f"  {', '.join(parts)} {self._phase}")
+        lines.append("")
+
+        # move cursor up to overwrite previous panel
+        if self._panel_lines > 0:
+            sys.stdout.write(f"\033[{self._panel_lines}A")
+        self._panel_lines = len(lines)
+        for line in lines:
+            sys.stdout.write(f"\033[K{line}\n")
+        sys.stdout.flush()
+
+    def event(self, msg: str, min_level: int = 1) -> None:
+        """print a log line above the panel"""
+        if self.verbosity < min_level:
+            return
+        if self.is_tty and self._panel_lines > 0:
+            sys.stdout.write(f"\033[{self._panel_lines}A\033[K{msg}\n")
+            saved = self._panel_lines
+            self._panel_lines = 0
+            self.refresh()
+            if self._panel_lines == 0:
+                self._panel_lines = saved
         else:
             print(msg)
+
+    def error(self, msg: str) -> None:
+        """always print, even in quiet mode"""
+        print(msg, file=sys.stderr)
+
+    def finish(self) -> None:
+        """clear panel"""
+        if self.is_tty and self._panel_lines > 0:
+            sys.stdout.write(f"\033[{self._panel_lines}A")
+            for _ in range(self._panel_lines):
+                sys.stdout.write("\033[K\n")
+            sys.stdout.write(f"\033[{self._panel_lines}A")
+            sys.stdout.flush()
+        self._panel_lines = 0
+        self._tasks = []
+
+    def _cols(self) -> int:
+        try:
+            return shutil.get_terminal_size().columns
+        except Exception:
+            return 80
 
 
 # singleton
@@ -87,7 +147,7 @@ def write_progress_md(
     pct = (completed / total * 100) if total > 0 else 0
     bar_len = 30
     filled = int(bar_len * completed / total) if total > 0 else 0
-    bar = "█" * filled + "░" * (bar_len - filled)
+    bar = "\u2588" * filled + "\u2591" * (bar_len - filled)
 
     lines = [
         "# PROGRESS",
@@ -95,12 +155,12 @@ def write_progress_md(
         f"updated: {now}  ",
         f"phase: {phase}",
         "",
-        f"```",
+        "```",
         f"[{bar}] {pct:.0f}%  {completed}/{total}",
-        f"```",
+        "```",
         "",
-        f"| | count |",
-        f"|---|---|",
+        "| | count |",
+        "|---|---|",
         f"| completed | {completed} |",
         f"| running | {running} |",
         f"| pending | {pending} |",

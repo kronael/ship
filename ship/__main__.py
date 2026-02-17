@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import signal
 import sys
 import uuid
@@ -15,7 +14,6 @@ from ship.display import display
 from ship.judge import Judge
 from ship.planner import Planner
 from ship.plan import run_plan
-from ship.refiner import Refiner
 from ship.state import StateManager
 from ship.types_ import Task, TaskStatus
 from ship.validator import Validator
@@ -24,57 +22,46 @@ from ship.worker import Worker
 SPEC_CANDIDATES = ["SPEC.md", "spec.md"]
 
 
-def discover_spec(context: tuple[str, ...]) -> str:
-    """resolve spec from context args or auto-discovery
+VERSION = "0.3.0"
 
-    priority:
-    1. explicit path(s) from context args
-    2. SPEC.md / spec.md in cwd
-    3. first file in specs/*.md
-    4. error
-    """
+
+def discover_spec(context: tuple[str, ...]) -> list[Path]:
     if context:
-        # single path arg: file or dir
         if len(context) == 1:
             p = Path(context[0])
-            if p.exists():
-                return str(p)
-        # multiple args or non-existent single arg treated as
-        # inline context (caller handles this)
-        return ""
+            if p.is_file():
+                return [p]
+            if p.is_dir():
+                return sorted(p.glob("*.md"))
+        return []
 
+    found: list[Path] = []
     for candidate in SPEC_CANDIDATES:
-        if Path(candidate).exists():
-            return candidate
-
+        p = Path(candidate)
+        if p.exists():
+            found.append(p)
     specs_dir = Path("specs")
     if specs_dir.is_dir():
-        md_files = sorted(specs_dir.glob("*.md"))
-        if md_files:
-            return str(md_files[0])
-
-    return ""
+        found.extend(sorted(specs_dir.glob("*.md")))
+    return found
 
 
-def plan_mode(context: tuple[str, ...]) -> None:
-    """run interactive planning loop"""
-    asyncio.run(run_plan(context))
-
-
-@click.command()
+@click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.argument("context", nargs=-1)
-@click.option("-p", "--plan", "plan_", is_flag=True,
-              help="[experimental] plan mode (see kronael/rsx for example)")
-@click.option("-c", "--continue", "cont", is_flag=True,
-              help="continue from last run")
-@click.option("-w", "--workers", type=int,
-              help="number of parallel workers")
-@click.option("-t", "--timeout", type=int,
-              help="task timeout in seconds")
-@click.option("-m", "--max-turns", type=int,
-              help="max agentic turns per task")
-@click.option("-v", "--verbose", is_flag=True,
-              help="show prompts and raw responses")
+@click.option(
+    "-p",
+    "--plan",
+    "plan_",
+    is_flag=True,
+    help="[experimental] plan mode (see kronael/rsx for example)",
+)
+@click.option("-c", "--continue", "cont", is_flag=True, help="continue from last run")
+@click.option("-w", "--workers", type=int, help="number of parallel workers")
+@click.option("-t", "--timeout", type=int, help="task timeout in seconds")
+@click.option("-m", "--max-turns", type=int, help="max agentic turns per task")
+@click.option("-v", "--verbose", count=True, help="increase verbosity (-v, -vv)")
+@click.option("-q", "--quiet", is_flag=True, help="errors only")
+@click.option("-x", "--codex", is_flag=True, help="enable codex refiner (off by default)")
 def run(
     context: tuple[str, ...],
     plan_: bool,
@@ -82,28 +69,31 @@ def run(
     workers: int | None,
     timeout: int | None,
     max_turns: int | None,
-    verbose: bool,
+    verbose: int,
+    quiet: bool,
+    codex: bool,
 ) -> None:
     """autonomous coding agent
 
     Discovers SPEC.md by default, or pass files/dirs as args.
     """
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        signal.signal(
-            sig,
-            lambda s, f: (_ for _ in ()).throw(KeyboardInterrupt()),
-        )
+
+    def _sigterm(signum, frame):
+        raise KeyboardInterrupt()
+
+    signal.signal(signal.SIGTERM, _sigterm)
 
     if plan_:
-        plan_mode(context)
+        asyncio.run(run_plan(context))
         return
 
+    verbosity = 0 if quiet else min(1 + verbose, 3)
+
     try:
-        asyncio.run(
-            _main(context, cont, workers, timeout, max_turns, verbose)
-        )
+        asyncio.run(_main(context, cont, workers, timeout, max_turns, verbosity, codex))
     except KeyboardInterrupt:
-        click.echo("\ninterrupted")
+        display.finish()
+        display.error("\ninterrupted")
         sys.exit(130)
 
 
@@ -113,18 +103,22 @@ async def _main(
     workers: int | None,
     timeout: int | None,
     max_turns: int | None,
-    verbose: bool,
+    verbosity: int,
+    use_codex: bool = False,
 ) -> None:
     try:
         cfg = Config.load(
             workers=workers,
             timeout=timeout,
             max_turns=max_turns,
-            verbose=verbose,
+            verbosity=verbosity,
+            use_codex=use_codex,
         )
     except RuntimeError as e:
-        click.echo(f"error: {e}", err=True)
+        display.error(f"error: {e}")
         sys.exit(1)
+
+    display.verbosity = cfg.verbosity
 
     Path(cfg.log_dir).mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
@@ -139,59 +133,53 @@ async def _main(
     try:
         state = StateManager(cfg.data_dir)
     except RuntimeError as e:
-        click.echo(f"error: {e}", err=True)
+        display.error(f"error: {e}")
         sys.exit(1)
 
     if cont:
         work = state.get_work_state()
         if not work:
-            click.echo("error: no previous run found", err=True)
+            display.error("error: no previous run found")
             sys.exit(1)
         if work.is_complete:
-            click.echo("goal already satisfied")
+            display.event("goal already satisfied")
             sys.exit(0)
         logging.info(f"continuing: {work.design_file}")
         await state.reset_interrupted_tasks()
     else:
         # resolve spec
-        spec_file = discover_spec(context)
+        spec_files = discover_spec(context)
+        spec_label = ""
         inline_context: list[str] = []
 
-        if spec_file:
+        if spec_files:
             try:
-                goal_text = Path(spec_file).read_text().strip()
+                goal_text = "\n\n".join(f.read_text() for f in spec_files).strip()
             except OSError as e:
-                click.echo(
-                    f"error: cannot read {spec_file}: {e}", err=True
-                )
+                display.error(f"error: cannot read specs: {e}")
                 sys.exit(1)
             if not goal_text:
-                click.echo(f"error: {spec_file} is empty", err=True)
+                display.error("error: spec files are empty")
                 sys.exit(1)
-            # if extra args beyond the file, add as context
+            spec_label = ", ".join(str(f) for f in spec_files)
             if context and len(context) > 1:
                 inline_context = list(context[1:])
         elif context:
-            # all args are inline context, no spec file found
-            # treat first arg as spec if it's a readable file
-            # otherwise everything is context for the validator
             goal_text = " ".join(context)
             inline_context = list(context)
         else:
-            click.echo(
-                "error: no spec found "
-                "(try SPEC.md, specs/*.md, or ship -p)",
-                err=True,
+            display.error(
+                "error: no spec found (try SPEC.md, specs/*.md, or ship -p)",
             )
             sys.exit(1)
 
+        display.event("\033[36m⟳\033[0m validating spec...")
         validator = Validator(
-            verbose=verbose,
+            verbosity=cfg.verbosity,
             session_id=str(uuid.uuid4()),
         )
-        validation = await validator.validate(
-            goal_text, context=inline_context
-        )
+        validation = await validator.validate(goal_text, context=inline_context)
+        display.event("\033[32m✓\033[0m spec ok")
         if not validation.accept:
             rejection_path = Path("REJECTION.md")
             gaps_text = (
@@ -207,12 +195,11 @@ async def _main(
             try:
                 rejection_path.write_text(rejection)
             except OSError as e:
-                click.echo(
+                display.error(
                     f"error: cannot write {rejection_path}: {e}",
-                    err=True,
                 )
                 sys.exit(1)
-            click.echo("error: design rejected (see REJECTION.md)")
+            display.error("error: design rejected (see REJECTION.md)")
             sys.exit(1)
 
         project_text = validation.project_md.strip()
@@ -220,32 +207,30 @@ async def _main(
             try:
                 Path("PROJECT.md").write_text(project_text + "\n")
             except OSError as e:
-                click.echo(
-                    f"error: cannot write PROJECT.md: {e}", err=True
-                )
+                display.error(f"error: cannot write PROJECT.md: {e}")
                 sys.exit(1)
 
-        design_file = spec_file or "<inline>"
+        design_file = spec_label if spec_files else "<inline>"
         logging.info(f"new run: {design_file}")
         combined_goal = goal_text
         if project_text:
-            combined_goal = (
-                f"{goal_text}\n\n---\n\n"
-                f"# PROJECT\n\n{project_text}\n"
-            )
+            combined_goal = f"{goal_text}\n\n---\n\n# PROJECT\n\n{project_text}\n"
         await state.init_work(design_file, combined_goal)
 
+        display.event("\033[36m⟳\033[0m planning tasks...")
         planner = Planner(
-            cfg, state, session_id=str(uuid.uuid4()),
+            cfg,
+            state,
+            session_id=str(uuid.uuid4()),
         )
         tasks = await planner.plan_once()
 
         if not tasks:
-            click.echo("error: no tasks generated from design")
+            display.error("error: no tasks generated from design")
             sys.exit(1)
 
         logging.info(f"generated {len(tasks)} tasks")
-        click.echo(f"\n📝 generated {len(tasks)} tasks")
+        display.event(f"\033[32m✓\033[0m generated {len(tasks)} tasks")
 
     queue: asyncio.Queue[Task] = asyncio.Queue()
 
@@ -255,9 +240,7 @@ async def _main(
 
     all_tasks = await state.get_all_tasks()
     total = len(all_tasks)
-    completed = len(
-        [t for t in all_tasks if t.status is TaskStatus.COMPLETED]
-    )
+    completed = len([t for t in all_tasks if t.status is TaskStatus.COMPLETED])
 
     num_workers = min(cfg.num_workers, len(pending))
     if num_workers < cfg.num_workers:
@@ -268,37 +251,58 @@ async def _main(
 
     work = state.get_work_state()
     project_context = work.project_context if work else ""
-    if project_context:
-        click.echo(f"\n🎯 project: {project_context[:80]}...")
+    exec_mode = work.execution_mode if work else "parallel"
 
-    click.echo(f"\n📊 progress: {completed}/{total} tasks completed")
-    click.echo(f"👥 workers: {num_workers}")
-    click.echo(f"🔄 max turns per task: {cfg.max_turns}")
-    click.echo(f"⏱️  timeout: {cfg.task_timeout}s\n")
-    click.echo("─" * 60)
+    if exec_mode == "sequential":
+        num_workers = 1
+        logging.info("sequential mode: using 1 worker")
+
+    display.banner(
+        f"ship v{VERSION} | {num_workers} workers"
+        f" | {exec_mode} | timeout {cfg.task_timeout}s"
+    )
+    if completed > 0:
+        display.event(f"progress: {completed}/{total} tasks completed")
+    display.event(f"\033[36m⟳\033[0m starting {num_workers} workers...")
 
     judge = Judge(
-        state, queue,
-        project_context=project_context, verbose=cfg.verbose,
+        state,
+        queue,
+        project_context=project_context,
+        verbosity=cfg.verbosity,
         session_id=str(uuid.uuid4()),
+        use_codex=cfg.use_codex,
     )
     worker_list = [
         Worker(
-            f"w{i}", cfg, state,
-            project_context=project_context, judge=judge,
+            f"w{i}",
+            cfg,
+            state,
+            project_context=project_context,
+            judge=judge,
             session_id=str(uuid.uuid4()),
         )
         for i in range(num_workers)
     ]
 
-    worker_tasks = [
-        asyncio.create_task(w.run(queue)) for w in worker_list
-    ]
+    worker_tasks = [asyncio.create_task(w.run(queue)) for w in worker_list]
     judge_task = asyncio.create_task(judge.run())
 
-    logging.info("system running")
+    all_async = [judge_task, *worker_tasks]
 
-    await judge_task
+    loop = asyncio.get_running_loop()
+    loop.add_signal_handler(signal.SIGINT, lambda: [t.cancel() for t in all_async])
+    loop.add_signal_handler(signal.SIGTERM, lambda: [t.cancel() for t in all_async])
+
+    try:
+        await judge_task
+    except asyncio.CancelledError:
+        for t in worker_tasks:
+            t.cancel()
+        await asyncio.gather(*worker_tasks, return_exceptions=True)
+        display.finish()
+        display.error("\ninterrupted")
+        sys.exit(130)
 
     for task in worker_tasks:
         task.cancel()
@@ -306,20 +310,15 @@ async def _main(
     await asyncio.gather(*worker_tasks, return_exceptions=True)
 
     final_tasks = await state.get_all_tasks()
-    completed = len(
-        [t for t in final_tasks if t.status is TaskStatus.COMPLETED]
-    )
-    failed = len(
-        [t for t in final_tasks if t.status is TaskStatus.FAILED]
-    )
+    completed = len([t for t in final_tasks if t.status is TaskStatus.COMPLETED])
+    failed = len([t for t in final_tasks if t.status is TaskStatus.FAILED])
 
     logging.info("goal satisfied")
-    display.clear_status()
-    click.echo("\n" + "─" * 60)
-    click.echo(f"\ndone. {completed}/{total} completed", nl=False)
-    if failed > 0:
-        click.echo(f", {failed} failed", nl=False)
-    click.echo()
+    display.finish()
+    display.event(
+        f"done. {completed}/{total} completed"
+        + (f", {failed} failed" if failed > 0 else "")
+    )
 
 
 if __name__ == "__main__":

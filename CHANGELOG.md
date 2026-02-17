@@ -2,6 +2,12 @@
 
 ## 0.4.0 (2026-02-17)
 
+### Added
+- `-x`/`--codex` flag: enable codex refiner (off by default)
+  - without `-x`, ship runs workers + replan only
+  - with `-x`, codex critiques completed work and generates follow-ups
+  - config: `use_codex` in Config, gated in Judge
+
 ### Changed
 - project version bumped to 0.4.0 in `pyproject.toml`
 - lockfile metadata refreshed for editable `ship` package version

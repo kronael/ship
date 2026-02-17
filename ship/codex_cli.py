@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import signal
 import shutil
 import tempfile
 from pathlib import Path
@@ -31,9 +33,7 @@ class CodexClient:
         if bun_path.exists():
             return str(bun_path)
 
-        raise RuntimeError(
-            "codex CLI not found (expected in PATH or ~/.bun/bin/codex)"
-        )
+        raise RuntimeError("codex CLI not found (expected in PATH or ~/.bun/bin/codex)")
 
     def _build_args(self, output_path: str) -> list[str]:
         """build codex CLI arguments"""
@@ -67,6 +67,7 @@ class CodexClient:
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            start_new_session=True,
         )
 
         timed_out = False
@@ -76,7 +77,7 @@ class CodexClient:
         except TimeoutError:
             timed_out = True
             try:
-                proc.kill()
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
                 await proc.wait()
             except Exception as e:
                 logging.warning(f"error cleaning up process after timeout: {e}")

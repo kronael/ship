@@ -25,7 +25,7 @@ def config(tmp_path):
         data_dir=str(tmp_path / ".ship"),
         max_turns=5,
         task_timeout=120,
-        verbose=False,
+        verbosity=1,
     )
 
 
@@ -45,7 +45,7 @@ def test_parse_xml_basic(planner):
 <task>Add HTTP server</task>
 </tasks>"""
 
-    context, tasks = planner._parse_xml(xml)
+    context, tasks, _ = planner._parse_xml(xml)
 
     assert len(tasks) == 2
     assert tasks[0].description == "Create main.go"
@@ -63,7 +63,7 @@ def test_parse_xml_with_whitespace(planner):
     </tasks>
     """
 
-    context, tasks = planner._parse_xml(xml)
+    context, tasks, _ = planner._parse_xml(xml)
 
     assert len(tasks) == 2
     assert tasks[0].description == "Create main.go"
@@ -71,7 +71,7 @@ def test_parse_xml_with_whitespace(planner):
 
 
 def test_parse_xml_empty(planner):
-    context, tasks = planner._parse_xml("<tasks></tasks>")
+    context, tasks, _ = planner._parse_xml("<tasks></tasks>")
     assert len(tasks) == 0
 
 
@@ -81,7 +81,7 @@ def test_parse_xml_ignores_short(planner):
 <task>Create a valid task</task>
 </tasks>"""
 
-    context, tasks = planner._parse_xml(xml)
+    context, tasks, _ = planner._parse_xml(xml)
 
     assert len(tasks) == 1
     assert tasks[0].description == "Create a valid task"
@@ -96,7 +96,7 @@ def test_parse_xml_with_noise(planner):
 
 Let me know if you need more."""
 
-    context, tasks = planner._parse_xml(xml)
+    context, tasks, _ = planner._parse_xml(xml)
 
     assert len(tasks) == 1
     assert tasks[0].description == "Create main.go"
@@ -110,7 +110,7 @@ def test_parse_xml_with_context(planner):
 </tasks>
 </project>"""
 
-    context, tasks = planner._parse_xml(xml)
+    context, tasks, _ = planner._parse_xml(xml)
 
     assert context == "Go web server with REST API"
     assert len(tasks) == 1
@@ -132,7 +132,7 @@ async def test_parse_design_success(planner):
         return_value=(xml_response, "sess-1")
     )
 
-    context, tasks = await planner._parse_design(goal)
+    context, tasks, _ = await planner._parse_design(goal)
 
     assert context == "Go web server"
     assert len(tasks) == 2
@@ -144,7 +144,7 @@ async def test_parse_design_claude_failure(planner):
     goal = "Create a web server"
     planner.claude.execute = AsyncMock(side_effect=RuntimeError("timeout"))
 
-    context, tasks = await planner._parse_design(goal)
+    context, tasks, _ = await planner._parse_design(goal)
 
     assert context == ""
     assert len(tasks) == 0
@@ -194,7 +194,7 @@ def test_parse_xml_with_depends(planner):
 </tasks>
 </project>"""
 
-    context, tasks = planner._parse_xml(xml)
+    context, tasks, _ = planner._parse_xml(xml)
 
     assert len(tasks) == 3
     assert tasks[0].depends_on == []
@@ -208,7 +208,7 @@ def test_parse_xml_depends_out_of_range(planner):
 <task>Another task</task>
 </tasks>"""
 
-    _, tasks = planner._parse_xml(xml)
+    _, tasks, _ = planner._parse_xml(xml)
 
     assert len(tasks) == 2
     assert tasks[0].depends_on == []
@@ -219,7 +219,7 @@ def test_parse_xml_depends_self_reference(planner):
 <task depends="1">Build feature</task>
 </tasks>"""
 
-    _, tasks = planner._parse_xml(xml)
+    _, tasks, _ = planner._parse_xml(xml)
 
     assert len(tasks) == 1
     assert tasks[0].depends_on == []
@@ -231,7 +231,7 @@ def test_parse_xml_depends_with_spaces(planner):
 <task depends=" 1 ">Depends on first</task>
 </tasks>"""
 
-    _, tasks = planner._parse_xml(xml)
+    _, tasks, _ = planner._parse_xml(xml)
 
     assert len(tasks) == 2
     assert tasks[1].depends_on == [tasks[0].id]
@@ -243,7 +243,7 @@ def test_parse_xml_depends_non_numeric(planner):
 <task depends="abc">Bad depends</task>
 </tasks>"""
 
-    _, tasks = planner._parse_xml(xml)
+    _, tasks, _ = planner._parse_xml(xml)
 
     assert len(tasks) == 2
     assert tasks[1].depends_on == []

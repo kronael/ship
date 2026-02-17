@@ -1,7 +1,7 @@
 # ship
 
-autonomous coding agent. planner-worker-judge pattern on the
-command line.
+unattended harness for coding agents. planner-worker-judge
+on the command line.
 
 ## install
 
@@ -22,8 +22,13 @@ ship -w 8            # 8 workers (default: 4)
 ship -t 600          # 10min timeout per task (default: 1200s)
 ship -m 10           # 10 agentic turns per task (default: 25)
 ship -v              # verbose (show prompts/responses)
+ship -x              # enable codex refiner
 ship -p              # [experimental] plan mode
 ```
+
+`-x` enables the codex refiner. without it, ship runs workers +
+replan only. with `-x`, codex critiques completed work and generates
+follow-up tasks between cycles.
 
 plan mode (`-p`) is experimental. see
 [kronael/rsx](https://github.com/kronael/rsx) for example usage.
@@ -41,9 +46,10 @@ SPEC.md -> validator -> planner -> workers -> judge -> refiner -> done
    its own session
 4. **judge** monitors completion, judges each task, triggers
    refinement
-5. **refiner** analyzes results via codex CLI, creates follow-up
-   tasks
-6. **replanner** runs if refiner finds nothing, catches missed work
+5. **refiner** (requires `-x`) analyzes results via codex CLI,
+   creates follow-up tasks
+6. **replanner** runs if refiner finds nothing (or `-x` not set),
+   catches missed work
 
 workers get skills from `~/.claude/skills/` injected into prompts.
 failed tasks auto-retry up to 10 times.
@@ -75,6 +81,12 @@ make test     # pytest
 make right    # pyright + pytest
 make clean    # rm cache + state
 ```
+
+## starship
+
+the `starship` Claude Code skill (`~/.claude/skills/starship/`)
+plans a project inside Claude, writes SPEC.md, then calls `ship`
+to execute. use `/starship <goal>` in Claude Code.
 
 See SPEC.md for specification, ARCHITECTURE.md for architecture.
 

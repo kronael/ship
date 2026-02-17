@@ -259,12 +259,25 @@ THEN: Return ONLY this XML:
 <project>
 <context>Brief 1-2 sentence description of what's being built and key \
 technologies</context>
+<mode>parallel|sequential</mode>
 <tasks>
-<task>Create go.mod with module name and dependencies</task>
-<task depends="1">Implement HTTP server with health endpoint</task>
-<task depends="1,2">Write integration tests for health endpoint</task>
+<task worker="auto">Create go.mod with module name and dependencies</task>
+<task worker="auto">Implement HTTP server with health endpoint</task>
+<task worker="auto" depends="1,2">Write integration tests for health endpoint</task>
 </tasks>
 </project>
+
+Rules for mode:
+- parallel: workers can run tasks concurrently (default, safer choice)
+- sequential: tasks must run one at a time (only if tasks will conflict)
+- Use sequential if tasks modify the same files or have tight dependencies
+- When in doubt, use parallel - ship will handle conflicts gracefully
+
+Rules for worker assignment:
+- worker="auto": ship assigns dynamically (default, use for most tasks)
+- worker="w0": pin to specific worker (use for ordered sequences)
+- Pin tasks that must run in order to the same worker
+- Leave unrelated tasks as "auto" for parallel execution
 
 Rules for tasks:
 - CRITICAL: Each task must be completable in 2 days or less - break \

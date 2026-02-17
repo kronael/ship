@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
 class Worker:
     """executes tasks from queue using claude code CLI"""
+
     def __init__(
         self,
         worker_id: str,
@@ -58,55 +59,74 @@ class Worker:
 
     async def _execute(self, task: Task) -> None:
         short_desc = task.description[:60]
-        display.event(f"  [{self.worker_id}] {short_desc}")
+        display.event(f"  [{self.worker_id}] {short_desc}", min_level=2)
 
         if self.judge:
-            self.judge.set_worker_task(
-                self.worker_id, task.description
-            )
+            self.judge.set_worker_task(self.worker_id, task.description)
 
         await self.state.update_task(task.id, TaskStatus.RUNNING)
 
         try:
-            result, sid = await self._do_work(task)
+            context = f"Project: {self.project_context}\n\n" if self.project_context else ""
+            skills_text = format_skills_for_prompt(self.skills)
+            skills = (
+                f"{skills_text}\n\nUse the relevant skills above for this task.\n\n"
+                if skills_text else ""
+            )
+            if task.session_id and not self.claude.session_id:
+                self.claude.session_id = task.session_id
+                self.claude._session_started = True
+            prompt = WORKER.format(
+                context=context,
+                skills=skills,
+                timeout_min=self.cfg.task_timeout // 60,
+                description=task.description,
+            )
+            if self.cfg.verbosity >= 3:
+                display.event(f"\n{'=' * 60}", min_level=3)
+                display.event("PROMPT TO CLAUDE:", min_level=3)
+                display.event(f"{'=' * 60}", min_level=3)
+                display.event(prompt, min_level=3)
+                display.event(f"{'=' * 60}\n", min_level=3)
+            result, sid = await self.claude.execute(prompt, timeout=self.cfg.task_timeout)
 
             if "reached max turns" in result.lower():
                 await self.state.update_task(
-                    task.id, TaskStatus.FAILED,
+                    task.id,
+                    TaskStatus.FAILED,
                     error="reached max turns",
                     session_id=sid,
                 )
-                log_entry(
-                    f"fail (max turns):"
-                    f" {task.description[:60]}"
-                )
+                log_entry(f"fail (max turns): {task.description[:60]}")
                 display.event(
-                    f"  [{self.worker_id}]"
-                    f" max turns - incomplete"
+                    f"  [{self.worker_id}] max turns - incomplete", min_level=2
                 )
+                logging.warning(f"{self.worker_id} max turns: {task.description}")
                 return
 
-            # parse structured output
             status, followups = self._parse_output(result)
 
             if status == "partial":
                 await self.state.update_task(
-                    task.id, TaskStatus.FAILED,
+                    task.id,
+                    TaskStatus.FAILED,
                     error="worker reported partial",
                     result=result,
                     session_id=sid,
                     followups=followups,
                 )
-                log_entry(
-                    f"partial: {task.description[:60]}"
-                )
+                log_entry(f"partial: {task.description[:60]}")
                 display.event(
-                    f"  [{self.worker_id}] partial"
+                    f"  [{self.worker_id}] partial", min_level=2
+                )
+                logging.warning(
+                    f"{self.worker_id} partial: {task.description}"
                 )
                 return
 
             await self.state.update_task(
-                task.id, TaskStatus.COMPLETED,
+                task.id,
+                TaskStatus.COMPLETED,
                 result=result,
                 session_id=sid,
             )
@@ -121,132 +141,48 @@ class Worker:
                 )
                 self.judge.notify_completed(updated)
             log_entry(f"done: {task.description[:60]}")
-            display.event(f"  [{self.worker_id}] done")
-            logging.info(
-                f"{self.worker_id} completed:"
-                f" {task.description}"
-            )
+            display.event(f"  [{self.worker_id}] done", min_level=2)
+            logging.info(f"{self.worker_id} completed: {task.description}")
 
         except ClaudeError as e:
             error_msg = str(e) if str(e) else type(e).__name__
             await self.state.update_task(
-                task.id, TaskStatus.FAILED,
+                task.id,
+                TaskStatus.FAILED,
                 error=error_msg,
                 session_id=e.session_id,
             )
             if "timeout" in error_msg.lower():
                 display.event(
-                    f"  [{self.worker_id}] timeout "
-                    f"after {self.cfg.task_timeout}s"
+                    f"  [{self.worker_id}] timeout after {self.cfg.task_timeout}s"
                 )
-                logging.warning(
-                    f"{self.worker_id} {error_msg}: "
-                    f"{task.description}"
-                )
+                logging.warning(f"{self.worker_id} {error_msg}: {task.description}")
             else:
-                display.event(
-                    f"  [{self.worker_id}]"
-                    f" error: {error_msg}"
-                )
+                display.event(f"  [{self.worker_id}] error: {error_msg}")
                 logging.error(
-                    f"{self.worker_id} failed: "
-                    f"{task.description}: {error_msg}"
+                    f"{self.worker_id} failed: {task.description}: {error_msg}"
                 )
 
         except Exception as e:
             error_msg = str(e) if str(e) else type(e).__name__
-            await self.state.update_task(
-                task.id, TaskStatus.FAILED, error=error_msg
-            )
-            display.event(
-                f"  [{self.worker_id}] error: {error_msg}"
-            )
-            logging.error(
-                f"{self.worker_id} failed: "
-                f"{task.description}: {error_msg}"
-            )
+            await self.state.update_task(task.id, TaskStatus.FAILED, error=error_msg)
+            display.event(f"  [{self.worker_id}] error: {error_msg}")
+            logging.error(f"{self.worker_id} failed: {task.description}: {error_msg}")
 
         finally:
             if self.judge:
                 self.judge.clear_worker_task(self.worker_id)
 
-    async def _do_work(
-        self, task: Task
-    ) -> tuple[str, str]:
-        """execute task via claude code CLI
-
-        returns: (output, session_id) tuple
-        """
-        context = ""
-        if self.project_context:
-            context = f"Project: {self.project_context}\n\n"
-
-        skills = ""
-        if self.skills:
-            skills_text = format_skills_for_prompt(self.skills)
-            if skills_text:
-                skills = (
-                    f"{skills_text}\n\n"
-                    f"Use the relevant skills above"
-                    f" for this task.\n\n"
-                )
-
-        # resume from previous session if available
-        if task.session_id and not self.claude.session_id:
-            self.claude.session_id = task.session_id
-            self.claude._session_started = True
-
-        prompt = WORKER.format(
-            context=context,
-            skills=skills,
-            timeout_min=self.cfg.task_timeout // 60,
-            description=task.description,
-        )
-
-        if self.cfg.verbose:
-            display.event(f"\n{'='*60}")
-            display.event("PROMPT TO CLAUDE:")
-            display.event(f"{'='*60}")
-            display.event(prompt)
-            display.event(f"{'='*60}\n")
-
-        output, sid = await self.claude.execute(
-            prompt, timeout=self.cfg.task_timeout
-        )
-
-        if self.cfg.verbose:
-            display.event(f"  output: {len(output)} chars")
-
-        return output, sid
-
-    def _parse_output(
-        self, text: str
-    ) -> tuple[str, list[str]]:
-        """parse structured worker output
-
-        returns: (status, followup_descriptions)
-        """
-        status = "done"
-        m = re.search(
-            r"<status>(done|partial)</status>", text
-        )
-        if m:
-            status = m.group(1)
+    def _parse_output(self, text: str) -> tuple[str, list[str]]:
+        m = re.search(r"<status>(done|partial)</status>", text)
+        status = m.group(1) if m else "done"
 
         followups: list[str] = []
-        block = re.search(
-            r"<followups>(.*?)</followups>",
-            text,
-            re.DOTALL,
-        )
+        block = re.search(r"<followups>(.*?)</followups>", text, re.DOTALL)
         if block:
-            for desc in re.findall(
-                r"<task>(.*?)</task>",
-                block.group(1),
-                re.DOTALL,
-            ):
-                desc = desc.strip()
-                if desc:
-                    followups.append(desc)
-
+            followups = [
+                d.strip()
+                for d in re.findall(r"<task>(.*?)</task>", block.group(1), re.DOTALL)
+                if d.strip()
+            ]
         return status, followups

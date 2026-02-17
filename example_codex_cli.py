@@ -11,8 +11,7 @@ async def main():
 
     # execute prompt
     result = await client.execute(
-        prompt="list all python files in the current directory",
-        timeout=30
+        prompt="list all python files in the current directory", timeout=30
     )
 
     print(f"result: {result}")

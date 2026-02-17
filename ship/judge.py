@@ -21,17 +21,11 @@ CASCADE_PREFIX = "cascade:"
 
 
 def is_cascade_error(error: str) -> bool:
-    """cascade errors are set by state.cascade_failure"""
     return error.startswith(CASCADE_PREFIX)
 
 
 class Judge:
-    """per-task judgment, batch refinement, full replanning
-
-    narrow: judge each completed task individually (did it work?)
-    medium: codex refines when batch completes (what's missing?)
-    wide:   replanner assesses everything (what was the goal again?)
-    """
+    """narrow: judge tasks; medium: codex refine; wide: replan"""
 
     def __init__(
         self,
@@ -40,27 +34,34 @@ class Judge:
         project_context: str = "",
         max_refine_rounds: int = 10,
         max_replan_rounds: int = 1,
-        verbose: bool = False,
+        verbosity: int = 1,
         session_id: str | None = None,
+        use_codex: bool = False,
     ):
         self.state = state
         self.queue = queue
         self.project_context = project_context
-        self.verbose = verbose
+        self.verbosity = verbosity
         self.max_refine_rounds = max_refine_rounds
         self.max_replan_rounds = max_replan_rounds
+        self.use_codex = use_codex
         self.refine_count = 0
         self.replan_count = 0
         self.worker_tasks: dict[str, str] = {}
         self.claude = ClaudeCodeClient(
-            model="sonnet", role="judge",
-            session_id=session_id,
+            model="sonnet",
+            role="judge",
+            session_id=str(uuid.uuid4()),
         )
         self.refiner = Refiner(
-            state, project_context, verbose=verbose,
+            state,
+            project_context,
+            verbosity=verbosity,
         )
         self.replanner = Replanner(
-            state, project_context, verbose=verbose,
+            state,
+            project_context,
+            verbosity=verbosity,
             session_id=session_id,
         )
         self._completed_queue: list[Task] = []
@@ -78,86 +79,69 @@ class Judge:
         self.worker_tasks.pop(worker_id, None)
 
     def notify_completed(self, task: Task) -> None:
-        """worker calls this when a task finishes"""
         self._completed_queue.append(task)
 
     async def _judge_task(self, task: Task) -> None:
-        """narrow: ask LLM to verify just this one task"""
         prompt = JUDGE_TASK.format(
             description=task.description,
             result=(task.result or "")[:500],
         )
 
-        if self.verbose:
-            display.event(f"  judging: {task.description[:50]}")
+        display.event(f"  judging: {task.description[:50]}", min_level=2)
 
         try:
-            await self.claude.execute(
-                prompt, timeout=45
-            )
+            await self.claude.execute(prompt, timeout=45)
         except RuntimeError as e:
             logging.warning(f"judge task failed: {e}")
             log_entry(f"judge skip: {task.description[:40]}")
 
     def _update_tui(self, tasks: list[Task]) -> None:
+        panel = []
+        for t in tasks:
+            worker = ""
+            if t.status is TaskStatus.RUNNING:
+                for wid, desc in self.worker_tasks.items():
+                    if desc == t.description:
+                        worker = wid
+                        break
+            panel.append((t.description, t.status, worker))
+        display.set_tasks(panel)
+
+        if self.refine_count > 0:
+            phase = f"refining ({self.refine_count}/{self.max_refine_rounds})"
+        elif self.replan_count > 0:
+            phase = f"replanning ({self.replan_count}/{self.max_replan_rounds})"
+        else:
+            phase = "executing"
+        display.set_phase(phase)
+        display.refresh()
+
         total = len(tasks)
-        completed = len(
-            [t for t in tasks if t.status is TaskStatus.COMPLETED]
-        )
-        running = len(
-            [t for t in tasks if t.status is TaskStatus.RUNNING]
-        )
-        pending = len(
-            [t for t in tasks if t.status is TaskStatus.PENDING]
-        )
-        failed = len(
-            [t for t in tasks if t.status is TaskStatus.FAILED]
-        )
-
-        pct = (completed / total * 100) if total > 0 else 0
-        parts = [f" {completed}/{total} ({pct:.0f}%)"]
-        if running:
-            parts.append(f"run:{running}")
-        if pending:
-            parts.append(f"pend:{pending}")
-        if failed:
-            parts.append(f"fail:{failed}")
-        active = [
-            f"{k}: {v[:35]}"
-            for k, v in sorted(self.worker_tasks.items())
-        ]
-        if active:
-            parts.append(", ".join(active))
-        display.status(" | ".join(parts))
-
-        workers = [
-            f"{k}: {v}" for k, v in sorted(self.worker_tasks.items())
-        ]
+        completed = sum(1 for t in tasks if t.status is TaskStatus.COMPLETED)
+        running = sum(1 for t in tasks if t.status is TaskStatus.RUNNING)
+        pending = sum(1 for t in tasks if t.status is TaskStatus.PENDING)
+        failed = sum(1 for t in tasks if t.status is TaskStatus.FAILED)
         write_progress_md(
-            total, completed, running, pending, failed, workers,
+            total, completed, running, pending, failed,
+            [f"{k}: {v}" for k, v in sorted(self.worker_tasks.items())],
         )
 
     def _parse_challenges(self, text: str) -> list[str]:
-        """extract challenge texts from <challenge> tags"""
         return [
-            c.strip() for c in
-            re.findall(
+            c.strip()
+            for c in re.findall(
                 r"<challenge>(.*?)</challenge>",
-                text, re.DOTALL,
+                text,
+                re.DOTALL,
             )
             if c.strip()
         ]
 
     async def _run_adversarial_round(self) -> bool:
-        """generate challenges and queue 2 random ones
-
-        returns True if max attempts exhausted (treat as done)
-        """
+        """returns True if max attempts exhausted"""
         self._adv_attempts += 1
         if self._adv_attempts > self.max_adv_attempts:
-            display.event(
-                "  adversarial: max attempts exhausted"
-            )
+            display.event("  adversarial: max attempts exhausted")
             logging.warning("adversarial max attempts reached")
             return True
 
@@ -166,7 +150,8 @@ class Judge:
             return True
 
         verifier = ClaudeCodeClient(
-            model="sonnet", role="verifier",
+            model="sonnet",
+            role="verifier",
         )
         prompt = VERIFIER.format(
             goal_text=work.goal_text[:2000],
@@ -179,9 +164,7 @@ class Judge:
         )
 
         try:
-            result, _ = await verifier.execute(
-                prompt, timeout=90
-            )
+            result, _ = await verifier.execute(prompt, timeout=90)
         except RuntimeError as e:
             logging.warning(f"verifier failed: {e}")
             display.event(f"  verifier failed: {e}")
@@ -193,19 +176,13 @@ class Judge:
             display.event("  verifier: no challenges found")
             return False
 
-        # dedup against previously seen challenges
-        novel = [
-            c for c in challenges
-            if c not in self._seen_challenges
-        ]
+        novel = [c for c in challenges if c not in self._seen_challenges]
         if not novel:
             logging.warning("all challenges already seen")
             display.event("  verifier: no novel challenges")
             return False
 
-        picked = random.sample(
-            novel, min(2, len(novel))
-        )
+        picked = random.sample(novel, min(2, len(novel)))
         for c in picked:
             self._seen_challenges.add(c)
 
@@ -222,29 +199,19 @@ class Judge:
             self._adv_task_ids.add(task.id)
             log_entry(f"adv challenge: {desc[:50]}")
 
-        display.event(
-            f"  queued {len(picked)} adversarial challenges"
-        )
+        display.event(f"  queued {len(picked)} adversarial challenges")
         return False
 
     async def _check_adv_batch(self) -> str:
-        """check if adversarial tasks finished
-
-        returns: "pending", "pass", or "fail"
-        """
+        """returns "pending", "pass", or "fail" """
         all_tasks = await self.state.get_all_tasks()
-        adv_tasks = [
-            t for t in all_tasks
-            if t.id in self._adv_task_ids
-        ]
+        adv_tasks = [t for t in all_tasks if t.id in self._adv_task_ids]
 
         if len(adv_tasks) != len(self._adv_task_ids):
             return "pending"
 
         for t in adv_tasks:
-            if t.status in (
-                TaskStatus.PENDING, TaskStatus.RUNNING,
-            ):
+            if t.status in (TaskStatus.PENDING, TaskStatus.RUNNING):
                 return "pending"
 
         for t in adv_tasks:
@@ -254,15 +221,13 @@ class Judge:
         return "pass"
 
     async def run(self) -> None:
-        """poll -> judge tasks -> retry -> refine -> replan"""
         logging.info("judge starting")
-        display.event("  judge: monitoring...")
+        display.event("  judge: monitoring...", min_level=2)
 
         try:
             while True:
                 await asyncio.sleep(5)
 
-                # judge newly completed tasks (narrow)
                 while self._completed_queue:
                     task = self._completed_queue.pop(0)
                     await self._judge_task(task)
@@ -270,23 +235,17 @@ class Judge:
                 all_tasks = await self.state.get_all_tasks()
                 self._update_tui(all_tasks)
 
-                # retry or cascade failed tasks
-                failed = [
-                    t for t in all_tasks
+                retryable = [
+                    t
+                    for t in all_tasks
                     if t.status is TaskStatus.FAILED
                     and t.id not in self._adv_task_ids
+                    and not is_cascade_error(t.error)
                 ]
-                for task in failed:
-                    # skip cascade failures (not retryable)
-                    if is_cascade_error(task.error):
-                        continue
+                for task in retryable:
                     if task.retries >= MAX_RETRIES:
                         # exhausted retries -- cascade
-                        cascaded = (
-                            await self.state.cascade_failure(
-                                task.id
-                            )
-                        )
+                        cascaded = await self.state.cascade_failure(task.id)
                         if cascaded:
                             log_entry(
                                 f"cascade: {task.id[:8]}"
@@ -299,16 +258,12 @@ class Judge:
                         continue
                     await self.state.retry_task(task.id)
                     await self.queue.put(task)
-                    log_entry(
-                        f"retry: {task.description[:50]}"
-                    )
+                    log_entry(f"retry: {task.description[:50]}")
                     display.event(
-                        f"  retry {task.id[:8]} "
-                        f"({task.retries + 1}"
-                        f"/{MAX_RETRIES})"
+                        f"  retry {task.id[:8]}"
+                        f" ({task.retries + 1}/{MAX_RETRIES})"
                     )
 
-                # check adversarial batch in progress
                 if self._adv_task_ids:
                     outcome = await self._check_adv_batch()
                     if outcome == "pending":
@@ -347,45 +302,42 @@ class Judge:
                 if not await self.state.is_complete():
                     continue
 
-                # batch done - refine (medium)
-                if self.refine_count < self.max_refine_rounds:
+                if self.use_codex and self.refine_count < self.max_refine_rounds:
                     self.refine_count += 1
                     display.event(
-                        f"  refining ({self.refine_count}"
-                        f"/{self.max_refine_rounds})..."
+                        f"  refining ({self.refine_count}/{self.max_refine_rounds})...",
+                        min_level=2,
                     )
+                    display.set_phase(
+                        f"refining ({self.refine_count}/{self.max_refine_rounds})"
+                    )
+                    display.refresh()
                     new_tasks = await self.refiner.refine()
                     if new_tasks:
-                        log_entry(
-                            f"+{len(new_tasks)} from refiner"
-                        )
-                        display.event(
-                            f"  +{len(new_tasks)} follow-up tasks"
-                        )
+                        log_entry(f"+{len(new_tasks)} from refiner")
+                        display.event(f"  +{len(new_tasks)} follow-up tasks")
                         for task in new_tasks:
                             await self.queue.put(task)
                         continue
 
-                # replan (wide)
                 if self.replan_count < self.max_replan_rounds:
                     self.replan_count += 1
                     display.event(
-                        f"  replanning ({self.replan_count}"
-                        f"/{self.max_replan_rounds})..."
+                        f"  replanning ({self.replan_count}/{self.max_replan_rounds})...",
+                        min_level=2,
                     )
+                    display.set_phase(
+                        f"replanning ({self.replan_count}/{self.max_replan_rounds})"
+                    )
+                    display.refresh()
                     new_tasks = await self.replanner.replan()
                     if new_tasks:
-                        log_entry(
-                            f"+{len(new_tasks)} from replanner"
-                        )
-                        display.event(
-                            f"  +{len(new_tasks)} replanned tasks"
-                        )
+                        log_entry(f"+{len(new_tasks)} from replanner")
+                        display.event(f"  +{len(new_tasks)} replanned tasks")
                         for task in new_tasks:
                             await self.queue.put(task)
                         continue
 
-                # enter adversarial verification
                 gave_up = await self._run_adversarial_round()
                 if gave_up:
                     display.clear_status()
