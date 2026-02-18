@@ -240,7 +240,7 @@ async def _main(
     project_context = work.project_context if work else ""
     exec_mode = work.execution_mode if work else "parallel"
 
-    if exec_mode == "sequential":
+    if exec_mode == "sequential" and workers is None:
         num_workers = 1
         logging.info("sequential mode: using 1 worker")
 
