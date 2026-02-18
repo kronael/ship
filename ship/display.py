@@ -41,17 +41,26 @@ class Display:
     def set_phase(self, phase: str) -> None:
         self._phase = phase
 
-    def show_plan(self) -> None:
-        """print the full task list once (no cursor tricks)"""
-        if self.verbosity < 1 or not self._tasks:
+    def show_plan(
+        self,
+        tasks: list[tuple[str, TaskStatus, str]] | None = None,
+    ) -> None:
+        """print the full task list once (no cursor tricks)
+
+        tasks: full list to display; falls back to self._tasks if omitted.
+        Always seeds _prev_statuses from the full list so the live window
+        doesn't emit spurious 'launched' events for already-known tasks.
+        """
+        render = tasks if tasks is not None else self._tasks
+        if self.verbosity < 1 or not render:
             return
         self._plan_shown = True
 
         cols = self._cols()
-        total = len(self._tasks)
+        total = len(render)
         w = len(str(total))
         print()
-        for i, (desc, status, _worker) in enumerate(self._tasks):
+        for i, (desc, status, _worker) in enumerate(render):
             tag = f"[{i + 1:>{w}}/{total}]"
             ind = {
                 TaskStatus.COMPLETED: "done",
@@ -66,10 +75,8 @@ class Display:
             print(f"{pre}{desc:<{max(avail, 0)}}{suf}")
         print()
 
-        # seed prev statuses so first refresh only shows changes
-        self._prev_statuses = {
-            desc: status for desc, status, _ in self._tasks
-        }
+        # seed from full list so live window never shows spurious events
+        self._prev_statuses = {desc: status for desc, status, _ in render}
 
     def refresh(self) -> None:
         """emit lines for tasks whose status changed, then summary"""

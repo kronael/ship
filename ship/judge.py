@@ -96,16 +96,22 @@ class Judge:
             log_entry(f"judge skip: {task.description[:40]}")
 
     def _update_tui(self, tasks: list[Task]) -> None:
-        panel = []
-        for t in tasks:
+        def _entry(t: Task) -> tuple[str, TaskStatus, str]:
             worker = ""
             if t.status is TaskStatus.RUNNING:
                 for wid, desc in self.worker_tasks.items():
                     if desc == t.description:
                         worker = wid
                         break
-            panel.append((t.description, t.status, worker))
-        display.set_tasks(panel)
+            return (t.description, t.status, worker)
+
+        all_panel = [_entry(t) for t in tasks]
+
+        # sliding window: running tasks + same count of next pending
+        running = [e for e in all_panel if e[1] is TaskStatus.RUNNING]
+        pending = [e for e in all_panel if e[1] is TaskStatus.PENDING]
+        n = max(len(running), 1)
+        display.set_tasks(running + pending[:n])
 
         if self.refine_count > 0:
             phase = f"refining ({self.refine_count}/{self.max_refine_rounds})"
@@ -116,7 +122,7 @@ class Judge:
         display.set_phase(phase)
 
         if not display._plan_shown:
-            display.show_plan()
+            display.show_plan(all_panel)
         display.refresh()
 
         total = len(tasks)
@@ -319,6 +325,7 @@ class Judge:
                     if new_tasks:
                         log_entry(f"+{len(new_tasks)} from refiner")
                         display.event(f"  +{len(new_tasks)} follow-up tasks")
+                        display._plan_shown = False
                         for task in new_tasks:
                             await self.queue.put(task)
                         continue
@@ -337,6 +344,7 @@ class Judge:
                     if new_tasks:
                         log_entry(f"+{len(new_tasks)} from replanner")
                         display.event(f"  +{len(new_tasks)} replanned tasks")
+                        display._plan_shown = False
                         for task in new_tasks:
                             await self.queue.put(task)
                         continue
