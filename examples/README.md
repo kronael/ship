@@ -1,53 +1,75 @@
 # ship examples
 
-example design files demonstrating ship usage.
+unattended harness for coding agents. give it a spec,
+it builds the thing.
 
-## usage
+## install
 
 ```bash
-# run an example
-ship examples/hello-world.txt
-
-# or copy and modify
-cp examples/fastapi-server.txt my-design.txt
-# edit my-design.txt
-ship my-design.txt
+pip install ship
+# or from source
+cd ship && make install
 ```
 
-## examples
+requires claude code CLI, authenticated.
 
-### hello-world.txt
-minimal example: creates a simple hello world script.
+## install planship skill
 
-### fastapi-server.txt
-builds a complete FastAPI REST API with:
-- health check endpoint
-- CRUD endpoints with validation
-- pagination support
-- pytest tests
-- OpenAPI docs
+planship lets Claude Code write specs for you, then
+launches ship automatically. copy the skill into your
+Claude Code skills directory:
 
-### cli-tool.txt
-creates a CLI tool using click:
-- multiple subcommands
-- config file management
-- command-line flags
-- tests for all commands
-
-## writing your own
-
-design files are plain text with tasks as bullet points:
-
-```
-- Create foo.py module
-- Add function bar() that does X
-- Write tests for bar()
-- Add error handling for edge case Y
+```bash
+cp -r skills/planship ~/.claude/skills/
 ```
 
-tips:
-- one task per line (bullet points)
-- be specific and actionable
-- start with verbs (create, add, write, implement)
-- mention files/modules explicitly
-- tasks run in parallel, so order doesn't matter for independent work
+## two workflows
+
+### manual spec ([simple/](simple/))
+
+write a SPEC.md yourself, run `ship`. best when you
+know exactly what you want.
+
+```bash
+mkdir my-project && cd my-project && git init
+# write SPEC.md
+ship
+```
+
+### planship ([advanced/](advanced/))
+
+let Claude Code explore your codebase, draft specs,
+then ship. best for larger features or unfamiliar
+codebases.
+
+```
+/planship build a REST API with user auth
+```
+
+## spec format
+
+ship reads `SPEC.md` or `specs/*.md`. each spec needs
+deliverables with concrete acceptance criteria:
+
+```markdown
+# Component Name
+
+## Goal
+what this component delivers
+
+## Deliverables
+
+### 1. Feature name
+- **Files**: src/foo.py, tests/test_foo.py
+- **Accept**: testable criteria
+- **Notes**: patterns to follow
+
+## Constraints
+- conventions, boundaries
+
+## Verification
+- [ ] how to know it works
+```
+
+see [simple/SPEC.md](simple/SPEC.md) for a runnable
+example.
