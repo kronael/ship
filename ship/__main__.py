@@ -21,7 +21,7 @@ from ship.worker import Worker
 SPEC_CANDIDATES = ["SPEC.md", "spec.md"]
 
 
-VERSION = "0.3.0"
+VERSION = "0.5.0"
 
 
 def discover_spec(context: tuple[str, ...]) -> list[Path]:
