@@ -237,12 +237,15 @@ class StateManager:
         return cascaded
 
     async def reset_interrupted_tasks(self) -> None:
-        """reset running tasks to pending on startup (continuation)"""
+        """reset running + failed tasks to pending on continuation"""
         async with self.lock:
             for task in self.tasks.values():
-                if task.status is TaskStatus.RUNNING:
+                if task.status in (TaskStatus.RUNNING, TaskStatus.FAILED):
                     task.status = TaskStatus.PENDING
+                    task.retries = 0
+                    task.error = ""
                     task.started_at = None
+                    task.completed_at = None
             self._save_tasks()
 
     def get_work_state(self) -> WorkState | None:

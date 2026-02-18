@@ -90,11 +90,8 @@ class ClaudeCodeClient:
             "--model", self.model,
             "--permission-mode", self.permission_mode,
         ]
-        if self.session_id:
-            if self._session_started:
-                args.extend(["--resume", self.session_id])
-            else:
-                args.extend(["--session-id", self.session_id])
+        if self.session_id and self._session_started:
+            args.extend(["--resume", self.session_id])
         if self.max_turns is not None:
             args.extend(["--max-turns", str(self.max_turns)])
         if self.allowed_tools:
@@ -102,6 +99,7 @@ class ClaudeCodeClient:
         proc = await asyncio.create_subprocess_exec(
             *args,
             cwd=self.cwd,
+            stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             start_new_session=True,
