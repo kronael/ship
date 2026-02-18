@@ -10,7 +10,6 @@ from ship.claude_code import ClaudeCodeClient, ClaudeError
 from ship.config import Config
 from ship.display import display, log_entry
 from ship.prompts import WORKER
-from ship.skills import format_skills_for_prompt, load_skills
 from ship.state import StateManager
 from ship.types_ import Task, TaskStatus
 
@@ -34,7 +33,6 @@ class Worker:
         self.state = state
         self.project_context = project_context
         self.judge = judge
-        self.skills = load_skills()
         self.claude = ClaudeCodeClient(
             model="sonnet",
             max_turns=cfg.max_turns,
@@ -66,14 +64,8 @@ class Worker:
 
         try:
             context = f"Project: {self.project_context}\n\n" if self.project_context else ""
-            skills_text = format_skills_for_prompt(self.skills)
-            skills = (
-                f"{skills_text}\n\nUse the relevant skills above for this task.\n\n"
-                if skills_text else ""
-            )
             prompt = WORKER.format(
                 context=context,
-                skills=skills,
                 timeout_min=self.cfg.task_timeout // 60,
                 description=task.description,
             )

@@ -98,7 +98,6 @@ earlier tasks (1-indexed). Tasks without depends can run in parallel"""
 
 WORKER = """\
 {context}\
-{skills}\
 You have a {timeout_min}-minute timeout. If you time out, the task \
 will be retried automatically. Focus on making progress.
 
@@ -153,7 +152,7 @@ Project: {project_context}
 Completed tasks:
 {completed_summary}
 
-Failed tasks (with session IDs for resume):
+Failed tasks:
 {failed_summary}
 
 Questions:
@@ -161,11 +160,10 @@ Questions:
 2. Do failed tasks need alternative approaches?
 3. Anything the judge flagged as incomplete?
 
-If follow-up tasks are needed, output them. For tasks that should \
-resume a failed session, include the session attribute:
+If follow-up tasks are needed, output them:
 
 <tasks>
-<task session="abc-123">retry with different approach</task>
+<task>retry with different approach</task>
 <task>description of new follow-up work</task>
 </tasks>
 

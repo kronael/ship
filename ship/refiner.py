@@ -45,8 +45,6 @@ class Refiner:
         fail_lines = []
         for t in failed[-5:]:
             line = f"- [FAIL] {t.description}: {t.error}"
-            if t.session_id:
-                line += f"  (session: {t.session_id})"
             if t.followups:
                 line += f"  (followups: {t.followups})"
             fail_lines.append(line)
@@ -85,14 +83,8 @@ class Refiner:
 
     def _parse_tasks(self, text: str) -> list[Task]:
         tasks = []
-        for m in re.finditer(
-            r'<task(?:\s+session="([^"]*)")?\s*>'
-            r"(.*?)</task>",
-            text,
-            re.DOTALL,
-        ):
-            session = m.group(1) or ""
-            desc = m.group(2).strip()
+        for m in re.finditer(r"<task>(.*?)</task>", text, re.DOTALL):
+            desc = m.group(1).strip()
             if desc and len(desc) > 5:
                 tasks.append(
                     Task(
@@ -100,7 +92,6 @@ class Refiner:
                         description=desc,
                         files=[],
                         status=TaskStatus.PENDING,
-                        session_id=session,
                     )
                 )
         return tasks
