@@ -23,6 +23,8 @@ class Display:
         self._panel_lines = 0
         self._prev_statuses: dict[str, TaskStatus] = {}
         self._plan_shown = False
+        self._global_done: int = 0
+        self._global_total: int = 0
 
     def banner(self, msg: str) -> None:
         """print header + separator"""
@@ -40,6 +42,10 @@ class Display:
 
     def set_phase(self, phase: str) -> None:
         self._phase = phase
+
+    def set_global(self, done: int, total: int) -> None:
+        self._global_done = done
+        self._global_total = total
 
     def show_plan(
         self,
@@ -102,12 +108,19 @@ class Display:
                 self._print_change(f"  [--] failed: {desc}")
 
         # overwrite summary line in place
-        total = len(self._tasks)
-        done = sum(1 for _, s, _ in self._tasks if s is TaskStatus.COMPLETED)
+        # use global counts when available (window only shows running+pending)
+        if self._global_total > 0:
+            g_done = self._global_done
+            g_total = self._global_total
+            pct = g_done * 100 // g_total
+            parts = [f"{g_done}/{g_total} ({pct}%)"]
+        else:
+            total = len(self._tasks)
+            done = sum(1 for _, s, _ in self._tasks if s is TaskStatus.COMPLETED)
+            pct = done * 100 // total if total else 0
+            parts = [f"{done}/{total} ({pct}%)"]
         fail = sum(1 for _, s, _ in self._tasks if s is TaskStatus.FAILED)
         run = sum(1 for _, s, _ in self._tasks if s is TaskStatus.RUNNING)
-
-        parts = [f"{done}/{total} ({done * 100 // total}%)"]
         if run:
             parts.append(f"{run} running")
         if fail:

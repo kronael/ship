@@ -109,6 +109,10 @@ class Judge:
         pending = [e for e in all_panel if e[1] is TaskStatus.PENDING]
         n = max(len(running), 1)
         display.set_tasks(running + pending[:n])
+        completed_count = sum(
+            1 for t in tasks if t.status is TaskStatus.COMPLETED
+        )
+        display.set_global(completed_count, len(tasks))
 
         if self.refine_count > 0:
             phase = f"refining ({self.refine_count}/{self.max_refine_rounds})"
