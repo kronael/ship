@@ -18,6 +18,7 @@ requires claude code CLI, authenticated. codex CLI optional
 ship                 # reads SPEC.md or specs/*.md
 ship spec.txt        # specify design file
 ship specs/          # ship from specs directory
+ship "add auth"      # inline goal text
 ship -c              # continue interrupted run
 ship -w 8            # 8 workers (default: 4)
 ship -t 1200         # 20min timeout per task (default: 2400s)
@@ -39,11 +40,12 @@ specs/*.md -> validator -> planner -> workers -> judge -> verifier -> done
 1. **validator** checks design quality, rejects to REJECTION.md or
    writes PROJECT.md
 2. **planner** breaks deliverables into tasks, writes PLAN.md
-3. **workers** execute tasks in parallel via claude CLI, each with
-   its own session. streams stdout, parses `<progress>` tags for
-   live status updates, tracks git diff stats per task
+3. **workers** execute tasks via claude CLI, each in its own session.
+   streams stdout, parses `<progress>` tags for live status, tracks
+   git diff stats per task. parses `<summary>` from output for TUI.
 4. **judge** monitors completion, judges each task, triggers
-   refinement cycles
+   refinement cycles. retries failed tasks up to 10 times, then
+   cascades failure to dependent tasks.
 5. **refiner** (requires `-x`) analyzes results via codex CLI,
    creates follow-up tasks
 6. **replanner** runs if refiner finds nothing (or `-x` not set),
@@ -51,12 +53,13 @@ specs/*.md -> validator -> planner -> workers -> judge -> verifier -> done
 7. **verifier** runs adversarial challenges (up to 3 rounds) to
    prove the objective is met before marking complete
 
-workers get skills from `~/.claude/skills/` injected into prompts.
-failed tasks auto-retry up to 10 times. dependency chains cascade
-failures to blocked tasks.
+on error: worker resumes session for a progress summary, or falls
+back to last `<progress>` tags seen. if output is missing XML tags,
+worker calls `claude.reformat()` to retry formatting.
 
 ctrl+c kills child processes and exits cleanly (SIGINT/SIGTERM
-both handled).
+both handled). a lock file prevents concurrent runs on the same
+state dir.
 
 ## planship
 
@@ -95,6 +98,8 @@ what this component delivers
 ## state
 
 `.ship/` directory: tasks.json, work.json, log/
+
+single .md arg gets its own slug dir: `ship foo.md` → `.ship/foo/`.
 
 ## config
 

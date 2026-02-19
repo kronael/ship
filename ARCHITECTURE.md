@@ -68,15 +68,21 @@ fetches tasks from queue, executes them, updates state.
 
 execution flow:
 1. check task.worker field - skip if pinned to different worker
-2. mark task as running
+2. mark task as running, notify judge
 3. spawn `claude -p <task.description> --model sonnet --permission-mode bypassPermissions` in current directory
 4. prompt instructs worker to read PLAN.md and CLAUDE.md before starting
 5. claude code has full tool access (read/write files, bash, grep, etc)
 6. stream stdout line-by-line; on_progress callback fires on `<progress>` XML tags
-7. mark task as completed with claude's stdout
-8. append git diff stats (_git_head + _git_diff_stat) to LOG.md entry
+7. parse output for `<status>`, `<summary>`, `<followups>` XML tags
+8. if XML tags missing, call claude.reformat(session_id) to retry formatting
+9. mark task as completed with result and summary
+10. notify judge; append git diff stats to LOG.md entry
 
-on error: mark task as failed with error message.
+on error (ClaudeError):
+- if session_id available: resume session via claude.summarize() for progress summary
+- else if partial output: use partial as result
+- else: use last `<progress>` tags from progress_log
+- mark task failed with error + result_text
 
 2400s timeout per task (configurable via TASK_TIMEOUT or -t flag).
 
@@ -88,10 +94,15 @@ polling orchestrator with multi-tier critique.
 
 polls state every 5s, updates TUI panel.
 
+maintains a completed queue: workers call notify_completed() when done;
+judge drains it each poll cycle and calls _judge_task() for each.
+
 responsibilities:
-1. retry failed tasks (up to 10 times)
-2. update TUI sliding window: running tasks + next N pending
-3. when all complete:
+1. drain completed queue, judge each task via claude (writes to PROGRESS.md)
+2. retry failed tasks (up to 10 times)
+3. cascade failure: tasks exhausting retries mark dependent tasks as cascade-failed
+4. update TUI sliding window: running tasks + next N pending
+5. when all complete:
    - call refiner if use_codex enabled (medium: "missing pieces?")
    - if refiner finds nothing (or skipped), call replanner (wide: "meets goal?")
    - if replanner exhausted, run adversarial verification rounds
@@ -132,7 +143,7 @@ deep assessment comparing goal vs reality, using claude CLI.
 reads:
 - original goal from SPEC.md
 - PLAN.md (original plan)
-- PROGRESS.md (execution history)
+- PROGRESS.md (execution history with per-task judgments)
 - actual codebase files
 
 asks:
@@ -172,28 +183,31 @@ verbosity levels:
 
 panel refreshes every 5s: running tasks + next N pending (sliding window).
 status: `done`, `FAIL`, `w0 ...` (running on worker 0), `-` (pending).
+task rows show summary text (from `<summary>` tag) when available.
 non-tty: one line per state change.
 
 ## data flow
 
-1. main() parses args (design file or -c flag)
+1. main() parses args (design file, inline text, or -c flag)
 2. load config (CLI args > env vars > .env > defaults)
-3. set display.verbosity
-4. if new run:
+3. acquire ship.lock (exclusive, non-blocking) — bail if already running
+4. set display.verbosity
+5. if new run:
    - validator.validate() checks spec
    - planner.plan_once() generates tasks + mode + worker assignments
    - state.init_work() creates work state
-5. if continuation:
+6. if continuation:
    - state.reset_interrupted_tasks() resets running → pending
-6. check execution mode, cap workers to 1 if sequential (unless -w overrides)
-7. populate queue from pending tasks
-8. spawn workers + judge as async tasks
-9. main waits for judge to complete
-10. judge polls every 5s:
-    - retry failed tasks
+7. check execution mode, cap workers to 1 if sequential (unless -w overrides)
+8. populate queue from pending tasks
+9. spawn workers + judge as async tasks
+10. main waits for judge to complete
+11. judge polls every 5s:
+    - drain completed queue, judge each task
+    - retry failed tasks; cascade after 10 retries
     - update TUI sliding window
     - when all complete: refiner (if -x) → replanner → adversarial → done
-11. on judge exit: cancel workers, shutdown
+12. on judge exit: cancel workers, print failed task summary, shutdown
 
 ## task lifecycle
 
@@ -206,9 +220,10 @@ states (explicit enum in types_.py):
 transitions:
 - pending → running (worker.execute start)
 - running → completed (worker.execute success)
-- running → failed (worker.execute error)
+- running → failed (worker.execute error or partial)
 - running → pending (continuation after interruption)
 - failed → pending (retry, up to 10 times)
+- failed → cascade-failed (dependent task blocked after retry exhaustion)
 
 ## concurrency model
 
@@ -218,6 +233,7 @@ coordination:
 - queue uses asyncio.Queue (no locks needed)
 - state manager uses asyncio.Lock
 - workers don't coordinate with each other
+- judge receives completion notifications via notify_completed()
 
 shutdown:
 - SIGINT/SIGTERM: cancel all async tasks
@@ -235,12 +251,15 @@ state tracks interrupted work:
 - running tasks reset to pending on startup
 - queue regenerated from pending tasks
 
+single .md spec file gets a slug-based data dir: `ship foo.md` → `.ship/foo/`.
+this allows multiple specs to coexist without clobbering each other.
+
 continuation: `ship SPEC.md` (creates state), `^C` (interrupt), `ship -c` (resumes from pending tasks).
 
 ## persistence format
 
 tasks.json: array of task objects with id, description, files, status, worker,
-created_at, started_at, completed_at, retries, error, result.
+created_at, started_at, completed_at, retries, error, result, summary.
 
 work.json: design_file, goal_text, project_context, execution_mode,
 is_complete, started_at, last_updated_at.
@@ -304,6 +323,12 @@ compared to cursor, this implementation adds:
 - verbosity levels (0-3)
 - TUI sliding window panel
 - progress tag callbacks during streaming
+- summary tag parsing (worker output → TUI display)
+- error recovery: session resume for summary on failure
+- reformat on missing XML tags
+- cascade failure propagation to dependent tasks
+- lock file preventing concurrent runs
 - git diff summary in LOG.md per task
+- slug-based state dirs for multi-spec coexistence
 
 see CLAUDE.md for commit conventions and development patterns.
