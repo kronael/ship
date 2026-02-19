@@ -18,7 +18,7 @@ class Display:
     def __init__(self):
         self.is_tty = sys.stdout.isatty()
         self.verbosity = 1
-        self._tasks: list[tuple[str, TaskStatus, str]] = []
+        self._tasks: list[tuple[str, TaskStatus, str, str, str]] = []
         self._phase = "executing"
         self._panel_lines = 0
         self._prev_statuses: dict[str, TaskStatus] = {}
@@ -36,7 +36,7 @@ class Display:
 
     def set_tasks(
         self,
-        tasks: list[tuple[str, TaskStatus, str]],
+        tasks: list[tuple[str, TaskStatus, str, str, str]],
     ) -> None:
         self._tasks = tasks
 
@@ -49,7 +49,7 @@ class Display:
 
     def show_plan(
         self,
-        tasks: list[tuple[str, TaskStatus, str]] | None = None,
+        tasks: list[tuple[str, TaskStatus, str, str, str]] | None = None,
     ) -> None:
         """print the full task list once (no cursor tricks)
 
@@ -65,24 +65,32 @@ class Display:
         cols = self._cols()
         total = len(render)
         w = len(str(total))
+        _color = {
+            TaskStatus.COMPLETED: "\033[32mdone\033[0m",
+            TaskStatus.FAILED: "\033[31mFAIL\033[0m",
+            TaskStatus.RUNNING: "\033[33m ...\033[0m",
+        }
         print()
-        for i, (desc, status, _worker) in enumerate(render):
+        for i, (desc, status, _worker, _summ, _err) in enumerate(render):
             tag = f"[{i + 1:>{w}}/{total}]"
-            ind = {
+            ind = _color.get(status, "  - ")
+            # strip ANSI for width calc (color codes add invisible chars)
+            ind_plain = {
                 TaskStatus.COMPLETED: "done",
                 TaskStatus.FAILED: "FAIL",
-                TaskStatus.RUNNING: "...",
-            }.get(status, " -")
+                TaskStatus.RUNNING: " ...",
+            }.get(status, "  - ")
             pre = f"  {tag} "
-            suf = f"  {ind}"
+            suf = f"  {ind_plain}"
             avail = cols - len(pre) - len(suf)
             if avail > 0 and len(desc) > avail:
                 desc = desc[: avail - 1] + "\u2026"
-            print(f"{pre}{desc:<{max(avail, 0)}}{suf}")
+            # print with colored suffix
+            print(f"{pre}{desc:<{max(avail, 0)}}  {ind}")
         print()
 
         # seed from full list so live window never shows spurious events
-        self._prev_statuses = {desc: status for desc, status, _ in render}
+        self._prev_statuses = {desc: status for desc, status, *_ in render}
 
     def refresh(self) -> None:
         """emit lines for tasks whose status changed, then summary"""
@@ -94,7 +102,7 @@ class Display:
             return
 
         # emit change lines
-        for desc, status, worker in self._tasks:
+        for desc, status, worker, summary, error in self._tasks:
             prev = self._prev_statuses.get(desc)
             if prev == status:
                 continue
@@ -103,9 +111,12 @@ class Display:
                 tag = worker if worker else "..."
                 self._print_change(f"  [{tag}] launching: {desc}")
             elif status is TaskStatus.COMPLETED:
-                self._print_change(f"  [--] done: {desc}")
+                label = summary if summary else desc
+                self._print_change(f"  done: {label}")
             elif status is TaskStatus.FAILED:
-                self._print_change(f"  [--] failed: {desc}")
+                err = error[:60] if error else ""
+                tail = f" — {err}" if err else ""
+                self._print_change(f"  failed: {desc[:50]}{tail}")
 
         # overwrite summary line in place
         # use global counts when available (window only shows running+pending)
@@ -116,11 +127,11 @@ class Display:
             parts = [f"{g_done}/{g_total} ({pct}%)"]
         else:
             total = len(self._tasks)
-            done = sum(1 for _, s, _ in self._tasks if s is TaskStatus.COMPLETED)
+            done = sum(1 for _, s, *_ in self._tasks if s is TaskStatus.COMPLETED)
             pct = done * 100 // total if total else 0
             parts = [f"{done}/{total} ({pct}%)"]
-        fail = sum(1 for _, s, _ in self._tasks if s is TaskStatus.FAILED)
-        run = sum(1 for _, s, _ in self._tasks if s is TaskStatus.RUNNING)
+        fail = sum(1 for _, s, *_ in self._tasks if s is TaskStatus.FAILED)
+        run = sum(1 for _, s, *_ in self._tasks if s is TaskStatus.RUNNING)
         if run:
             parts.append(f"{run} running")
         if fail:

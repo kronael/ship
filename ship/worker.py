@@ -62,6 +62,8 @@ class Worker:
 
         await self.state.update_task(task.id, TaskStatus.RUNNING)
 
+        progress_log: list[str] = []
+
         try:
             context = f"Project: {self.project_context}\n\n" if self.project_context else ""
             prompt = WORKER.format(
@@ -83,8 +85,9 @@ class Worker:
                     f"  [{self.worker_id}] {msg}",
                     min_level=1,
                 )
+                progress_log.append(msg)
 
-            result, _ = await self.claude.execute(
+            result, session_id = await self.claude.execute(
                 prompt,
                 timeout=self.cfg.task_timeout,
                 on_progress=on_progress,
@@ -103,7 +106,7 @@ class Worker:
                 logging.warning(f"{self.worker_id} max turns: {task.description}")
                 return
 
-            status, followups = self._parse_output(result)
+            status, followups, summary = self._parse_output(result)
 
             if status == "partial":
                 await self.state.update_task(
@@ -126,6 +129,8 @@ class Worker:
                 task.id,
                 TaskStatus.COMPLETED,
                 result=result,
+                summary=summary,
+                session_id=session_id,
             )
             if self.judge:
                 updated = Task(
@@ -138,19 +143,40 @@ class Worker:
                 self.judge.notify_completed(updated)
             git_summary = await self._git_diff_stat(head_before)
             suffix = f" ({git_summary})" if git_summary else ""
-            log_entry(f"done: {task.description[:60]}{suffix}")
-            display.event(
-                f"  [{self.worker_id}] done{suffix}",
-                min_level=2,
+            label = summary if summary else task.description[:60]
+            log_entry(f"done: {label}{suffix}")
+            done_msg = (
+                f"  [{self.worker_id}] done: {summary}{suffix}"
+                if summary
+                else f"  [{self.worker_id}] done{suffix}"
             )
+            display.event(done_msg, min_level=2)
             logging.info(f"{self.worker_id} completed: {task.description}")
 
         except ClaudeError as e:
             error_msg = str(e) if str(e) else type(e).__name__
+            # attempt to resume and get a progress summary
+            summary = ""
+            if e.session_id:
+                display.event(
+                    f"  [{self.worker_id}] resuming for summary...",
+                    min_level=1,
+                )
+                summary = await self.claude.summarize(e.session_id, e.partial)
+            elif e.partial:
+                summary = e.partial
+            elif progress_log:
+                summary = "progress before failure:\n" + "\n".join(
+                    f"- {p}" for p in progress_log[-10:]
+                )
+            result_text = summary or error_msg
+            status, followups, _ = self._parse_output(result_text)
             await self.state.update_task(
                 task.id,
                 TaskStatus.FAILED,
                 error=error_msg,
+                result=result_text,
+                followups=followups,
             )
             if "timeout" in error_msg.lower():
                 display.event(
@@ -173,7 +199,7 @@ class Worker:
             if self.judge:
                 self.judge.clear_worker_task(self.worker_id)
 
-    def _parse_output(self, text: str) -> tuple[str, list[str]]:
+    def _parse_output(self, text: str) -> tuple[str, list[str], str]:
         m = re.search(r"<status>(done|partial)</status>", text)
         status = m.group(1) if m else "done"
 
@@ -185,7 +211,11 @@ class Worker:
                 for d in re.findall(r"<task>(.*?)</task>", block.group(1), re.DOTALL)
                 if d.strip()
             ]
-        return status, followups
+
+        sm = re.search(r"<summary>(.*?)</summary>", text, re.DOTALL)
+        summary = sm.group(1).strip() if sm else ""
+
+        return status, followups, summary
 
     async def _git_head(self) -> str:
         """snapshot current HEAD"""

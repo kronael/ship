@@ -125,7 +125,11 @@ Task: {description}
 When done, append a 1-line summary to LOG.md (create if missing). \
 Format: `- <what you shipped>`. Keep it brief.
 
-After your LOG.md entry, output this structured block:
+After your LOG.md entry, output this structured block. \
+Before the status tag, output a 3-5 word outcome summary:
+<summary>fixed auth bug</summary>
+Keep it concrete: what was done, not what was attempted. \
+Examples: "added 3 tests", "fixed ws reconnect", "patched serialization"
 <status>done</status>
 
 If you could NOT fully complete the task, output:

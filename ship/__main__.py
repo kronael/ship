@@ -20,7 +20,7 @@ from ship.worker import Worker
 SPEC_CANDIDATES = ["SPEC.md", "spec.md"]
 
 
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 
 
 def discover_spec(context: tuple[str, ...]) -> list[Path]:
@@ -132,6 +132,14 @@ async def _main(
             sys.exit(0)
         logging.info(f"continuing: {work.design_file}")
         await state.reset_interrupted_tasks()
+        # guard: no tasks in state means planning never completed
+        _saved = await state.get_all_tasks()
+        if not _saved:
+            display.error(
+                "error: no tasks in saved state"
+                " — run without -c to re-plan"
+            )
+            sys.exit(1)
     else:
         # resolve spec
         spec_files = discover_spec(context)
@@ -221,20 +229,23 @@ async def _main(
     total = len(all_tasks)
     completed = len([t for t in all_tasks if t.status is TaskStatus.COMPLETED])
 
-    num_workers = min(cfg.num_workers, len(pending))
-    if num_workers < cfg.num_workers:
-        logging.info(
-            f"reducing workers from {cfg.num_workers} "
-            f"to {num_workers} (only {len(pending)} tasks)"
-        )
-
     work = state.get_work_state()
     project_context = work.project_context if work else ""
     exec_mode = work.execution_mode if work else "parallel"
 
-    if exec_mode == "sequential" and workers is None:
+    # -w always wins: explicit workers override exec_mode and pending cap
+    if workers is not None:
+        num_workers = cfg.num_workers
+    elif exec_mode == "sequential":
         num_workers = 1
         logging.info("sequential mode: using 1 worker")
+    else:
+        num_workers = min(cfg.num_workers, max(1, len(pending)))
+        if num_workers < cfg.num_workers:
+            logging.info(
+                f"reducing workers from {cfg.num_workers} "
+                f"to {num_workers} (only {len(pending)} tasks)"
+            )
 
     display.banner(
         f"ship v{VERSION} | {num_workers} workers"
@@ -292,6 +303,17 @@ async def _main(
 
     logging.info("goal satisfied")
     display.finish()
+
+    if failed > 0:
+        print()
+        print("failed tasks:")
+        for t in final_tasks:
+            if t.status is TaskStatus.FAILED:
+                err = (t.error or "no error")[:80]
+                summ = t.summary or t.description[:40]
+                print(f"  \u2717 {summ}  [{err}]")
+        print()
+
     display.event(
         f"done. {completed}/{total} completed"
         + (f", {failed} failed" if failed > 0 else "")

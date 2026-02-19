@@ -1,5 +1,58 @@
 # Changelog
 
+## 0.6.0 (2026-02-19)
+
+### Added
+- `ClaudeError.partial`: buffered stdout saved when timeout occurs
+- `ClaudeError.session_id`: session ID captured on error for resume
+- `ClaudeError` non-zero exit: exit code included in error message
+- `ClaudeCodeClient.summarize()`: resumes interrupted session via
+  `--resume`, returns done/remaining/blockers summary
+- `execute()` uses `--output-format json` to capture session_id from
+  each response line
+
+### Changed
+- `worker.py`: `progress_log` and `session_id` hoisted before try block
+  so they are available in except handlers
+- `on_progress` callback accumulates into `progress_log`
+- on `ClaudeError`: calls `summarize()` if session_id available, else
+  falls back to `partial` or `progress_log` tail
+- failed tasks store result so replanner receives signal on what failed
+
+## 0.5.0 (2026-02-18)
+
+### Added
+- adversarial verification: after replanning, verifier generates 10 challenges per
+  round, picks 2, queues as worker tasks; up to 3 rounds / 3 attempts total;
+  challenges deduped across rounds to avoid repetition
+- task dependency parsing: `depends="N"` and `depends="N,M"` attributes in planner
+  XML (1-indexed); resolved to UUIDs before queuing; tasks without `depends` can
+  run in parallel
+- `<progress>` tag support: workers emit `<progress>what you're doing</progress>`
+  tags; displayed live in TUI at verbosity ≥1 via `on_progress` callback
+- git diff summary on task completion: `_git_head()` snapshots HEAD before task,
+  `_git_diff_stat()` appends `(N files, +ins/-del)` to LOG.md and TUI event
+- streaming stdout: `execute()` reads claude stdout line-by-line instead of
+  waiting for `proc.communicate()`; enables real-time progress display
+
+### Changed
+- session management removed: `ClaudeCodeClient` no longer manages session IDs,
+  `--session-id`/`--resume` flags eliminated; `execute()` returns `(output, "")`
+- skills injection removed from worker prompts; WORKER prompt now instructs agents
+  to read PLAN.md and CLAUDE.md directly at task start
+- task_timeout default: 2400s (was 1200s, 40min)
+- max_turns default: 50 (was 25)
+- sequential mode: explicit `-w` flag now overrides auto-reduction to 1 worker
+- sliding window TUI: shows running tasks + next N pending (not full list)
+- PLANNER context prompt expanded: requests 4-6 sentence project summary for workers
+- refiner gated behind `-x`/`--codex` flag (already added in 0.4.0, now documented)
+- VERSION 0.5.0
+
+### Removed
+- plan mode (`-p`/`--plan` flag) removed
+- session resume logic from worker (`task.session_id` carry-over)
+- `session_id` parameters from `Planner`, `Validator`, `Judge`, `Replanner`
+
 ## 0.4.0 (2026-02-17)
 
 ### Added

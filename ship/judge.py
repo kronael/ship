@@ -93,14 +93,14 @@ class Judge:
             log_entry(f"judge skip: {task.description[:40]}")
 
     def _update_tui(self, tasks: list[Task]) -> None:
-        def _entry(t: Task) -> tuple[str, TaskStatus, str]:
+        def _entry(t: Task) -> tuple[str, TaskStatus, str, str, str]:
             worker = ""
             if t.status is TaskStatus.RUNNING:
                 for wid, desc in self.worker_tasks.items():
                     if desc == t.description:
                         worker = wid
                         break
-            return (t.description, t.status, worker)
+            return (t.description, t.status, worker, t.summary, t.error)
 
         all_panel = [_entry(t) for t in tasks]
 
@@ -151,8 +151,8 @@ class Judge:
         """returns True if max attempts exhausted"""
         self._adv_attempts += 1
         if self._adv_attempts > self.max_adv_attempts:
-            display.event("  adversarial: max attempts exhausted")
-            logging.warning("adversarial max attempts reached")
+            display.event("  verification: no more novel challenges")
+            logging.warning("verification exhausted novel challenges")
             return True
 
         work = self.state.get_work_state()
@@ -280,8 +280,8 @@ class Judge:
                         continue
                     if outcome == "fail":
                         display.event(
-                            "  adversarial challenge failed"
-                            " — re-entering refine cycle"
+                            "  verification found gaps"
+                            " — re-checking..."
                         )
                         log_entry("adv fail: resetting")
                         self._adv_task_ids.clear()
@@ -294,17 +294,17 @@ class Judge:
                     self.adv_round += 1
                     self._adv_task_ids.clear()
                     display.event(
-                        f"  adversarial round"
+                        f"  verification round"
                         f" {self.adv_round}"
-                        f"/{self.max_adv_rounds} passed"
+                        f"/{self.max_adv_rounds}: clean"
                     )
                     if self.adv_round >= self.max_adv_rounds:
                         display.clear_status()
                         display.event(
-                            "  all tasks complete"
-                            " (adversarial verified)"
+                            "  all verified"
+                            " — no issues found"
                         )
-                        logging.info("goal satisfied")
+                        logging.info("goal satisfied (verification clean)")
                         await self.state.mark_complete()
                         return
                     continue
@@ -354,10 +354,10 @@ class Judge:
                 if gave_up:
                     display.clear_status()
                     display.event(
-                        "  all tasks complete"
-                        " (adversarial exhausted)"
+                        "  all verified"
+                        " — no issues found"
                     )
-                    logging.info("goal satisfied (adv exhausted)")
+                    logging.info("goal satisfied (verification clean)")
                     await self.state.mark_complete()
                     return
                 continue

@@ -29,6 +29,7 @@ class Task:
     retries: int = 0
     error: str = ""
     result: str = ""
+    summary: str = ""
     session_id: str = ""
     depends_on: list[str] = field(default_factory=list)
     followups: list[str] = field(default_factory=list)
@@ -44,6 +45,7 @@ class Task:
             "retries": self.retries,
             "error": self.error,
             "result": self.result,
+            "summary": self.summary,
             "session_id": self.session_id,
             "depends_on": self.depends_on,
             "followups": self.followups,

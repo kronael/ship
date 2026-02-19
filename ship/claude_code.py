@@ -12,7 +12,10 @@ from pathlib import Path
 
 
 class ClaudeError(RuntimeError):
-    pass
+    def __init__(self, msg: str, partial: str = "", session_id: str = ""):
+        super().__init__(msg)
+        self.partial = partial
+        self.session_id = session_id
 
 
 class ClaudeCodeClient:
@@ -78,11 +81,12 @@ class ClaudeCodeClient:
         timeout: int = 120,
         on_progress: Callable[[str], None] | None = None,
     ) -> tuple[str, str]:
-        """returns (stdout, session_id); raises ClaudeError on failure/timeout"""
+        """returns (output, session_id); raises ClaudeError on failure/timeout"""
         args = [
             "claude", "-p", prompt,
             "--model", self.model,
             "--permission-mode", self.permission_mode,
+            "--output-format", "json",
         ]
         if self.max_turns is not None:
             args.extend(["--max-turns", str(self.max_turns)])
@@ -98,8 +102,9 @@ class ClaudeCodeClient:
         )
         self._proc = proc
 
+        lines: list[str] = []
+        session_id = ""
         try:
-            lines: list[str] = []
             async with asyncio.timeout(timeout):
                 assert proc.stdout is not None
                 assert proc.stderr is not None
@@ -120,23 +125,86 @@ class ClaudeCodeClient:
             raise
         except TimeoutError:
             await self._kill_proc(proc)
-            self._trace(len(prompt), 0, timeout, False)
-            raise ClaudeError(f"claude CLI timeout after {timeout}s")
+            partial = "".join(lines).strip()
+            self._trace(len(prompt), len(partial), timeout, False)
+            raise ClaudeError(
+                f"claude CLI timeout after {timeout}s",
+                partial=partial,
+                session_id=session_id,
+            )
         finally:
             self._proc = None
 
-        output = "".join(lines).strip()
+        raw_output = "".join(lines).strip()
+        output = raw_output
+        try:
+            data = json.loads(raw_output)
+            output = data.get("result", raw_output)
+            session_id = data.get("session_id", "")
+        except json.JSONDecodeError:
+            pass
 
         if proc.returncode != 0:
-            error = stderr_bytes.decode().strip() or output
+            stderr_text = stderr_bytes.decode().strip()
+            error = stderr_text or output or f"exit {proc.returncode}"
             self._trace(len(prompt), 0, timeout, False)
-            raise ClaudeError(f"claude CLI failed: {error}")
+            raise ClaudeError(
+                f"claude CLI failed (exit {proc.returncode}): {error}",
+                partial=output,
+                session_id=session_id,
+            )
 
         if not output:
-            raise ClaudeError("claude CLI returned empty output")
+            raise ClaudeError(
+                "claude CLI returned empty output",
+                session_id=session_id,
+            )
 
         self._trace(len(prompt), len(output), timeout, True)
-        return output, ""
+        return output, session_id
+
+    async def summarize(self, session_id: str, partial: str = "") -> str:
+        """resume an interrupted session and extract a progress summary"""
+        context = f"\n\nYour partial output:\n{partial[:600]}" if partial else ""
+        prompt = (
+            f"You were interrupted before finishing your task.{context}\n\n"
+            "Summarize in 3-5 lines:\n"
+            "1. What you completed\n"
+            "2. What remains\n"
+            "3. Any errors or blockers\n\n"
+            "Then output:\n"
+            "<status>partial</status>\n"
+            "<followups>\n"
+            "<task>description of remaining work</task>\n"
+            "</followups>"
+        )
+        args = [
+            "claude",
+            "--resume", session_id,
+            "-p", prompt,
+            "--model", self.model,
+            "--permission-mode", self.permission_mode,
+            "--output-format", "json",
+        ]
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *args,
+                cwd=self.cwd,
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            async with asyncio.timeout(60):
+                out, _ = await proc.communicate()
+            raw = out.decode().strip()
+            data = json.loads(raw)
+            return data.get("result", raw)
+        except json.JSONDecodeError:
+            return raw
+        except Exception as e:
+            logging.warning(f"summarize failed: {e}")
+            return partial or "interrupted (no summary available)"
 
     @staticmethod
     async def _kill_proc(proc: asyncio.subprocess.Process) -> None:

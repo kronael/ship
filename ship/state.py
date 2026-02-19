@@ -52,6 +52,8 @@ class StateManager:
                             task_data["depends_on"] = []
                         if "followups" not in task_data:
                             task_data["followups"] = []
+                        if "summary" not in task_data:
+                            task_data["summary"] = ""
                         task = Task(**task_data)
                         task.status = TaskStatus(task_data["status"])
                         self.tasks[task.id] = task
@@ -126,6 +128,7 @@ class StateManager:
         status: TaskStatus,
         error: str = "",
         result: str = "",
+        summary: str = "",
         session_id: str = "",
         followups: list[str] | None = None,
     ) -> None:
@@ -145,6 +148,8 @@ class StateManager:
                 task.error = error
             if result:
                 task.result = result
+            if summary:
+                task.summary = summary
             if session_id:
                 task.session_id = session_id
             if followups:
