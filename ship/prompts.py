@@ -41,8 +41,8 @@ purpose)
 {goal}
 </design>
 
-FIRST: Write a PLAN.md file to the project root. This is the execution \
-plan that workers will follow. Format:
+FIRST: Write the execution plan to {plan_path}. \
+Workers will read this file. Format:
 
 ```markdown
 # PLAN
@@ -99,9 +99,9 @@ earlier tasks (1-indexed). Tasks without depends can run in parallel"""
 
 WORKER = """\
 {context}\
-Before starting: read PLAN.md (execution plan) and CLAUDE.md (project \
-patterns) if they exist — they contain architecture and conventions \
-that will save you from re-exploring the codebase.
+Before starting: read {plan_path} (execution plan) and CLAUDE.md \
+(project patterns) if they exist — they contain architecture and \
+conventions that will save you from re-exploring the codebase.
 
 You have a {timeout_min}-minute timeout. If you time out, the task \
 will be retried automatically. Focus on making progress.
@@ -122,7 +122,7 @@ Rules:
 
 Task: {description}
 
-When done, append a 1-line summary to LOG.md (create if missing). \
+When done, append a 1-line summary to {log_path} (create if missing). \
 Format: `- <what you shipped>`. Keep it brief.
 
 After your LOG.md entry, output this structured block. \
@@ -148,7 +148,7 @@ Its output (truncated):
 Read the files it claims to have created/modified. In one sentence: \
 did it actually complete the task? If not, what's wrong?
 
-Append your verdict to PROGRESS.md under a ## log section. \
+Append your verdict to {progress_path} under a ## log section. \
 Format: `- HH:MM task: verdict`. Create the file/section if missing."""
 
 REFINER = """\
@@ -224,7 +224,7 @@ Failed:
 
 Read the actual codebase. Compare against the goal.
 
-1. Update PROGRESS.md with a final ## assessment section:
+1. Update {progress_path} with a final ## assessment section:
    what percentage of the goal is met, what's missing, quality notes.
 
 2. If work is missing, output new tasks. If goal is met, output empty.

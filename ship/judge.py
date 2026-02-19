@@ -36,6 +36,7 @@ class Judge:
         max_replan_rounds: int = 1,
         verbosity: int = 1,
         use_codex: bool = False,
+        progress_path: str = "PROGRESS.md",
     ):
         self.state = state
         self.queue = queue
@@ -44,6 +45,7 @@ class Judge:
         self.max_refine_rounds = max_refine_rounds
         self.max_replan_rounds = max_replan_rounds
         self.use_codex = use_codex
+        self.progress_path = progress_path
         self.refine_count = 0
         self.replan_count = 0
         self.worker_tasks: dict[str, str] = {}
@@ -60,6 +62,7 @@ class Judge:
             state,
             project_context,
             verbosity=verbosity,
+            progress_path=progress_path,
         )
         self._completed_queue: list[Task] = []
         self.adv_round = 0
@@ -82,6 +85,7 @@ class Judge:
         prompt = JUDGE_TASK.format(
             description=task.description,
             result=(task.result or "")[:500],
+            progress_path=self.progress_path,
         )
 
         display.event(f"  judging: {task.description[:50]}", min_level=2)
@@ -134,6 +138,7 @@ class Judge:
         write_progress_md(
             total, completed, running, pending, failed,
             [f"{k}: {v}" for k, v in sorted(self.worker_tasks.items())],
+            path=self.progress_path,
         )
 
     def _parse_challenges(self, text: str) -> list[str]:

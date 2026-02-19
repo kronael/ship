@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import re
 import uuid
+from pathlib import Path
 
 from ship.claude_code import ClaudeCodeClient
 from ship.config import Config
@@ -49,7 +50,8 @@ class Planner:
         return tasks
 
     async def _parse_design(self, goal: str) -> tuple[str, list[Task], str]:
-        prompt = PLANNER.format(goal=goal)
+        plan_path = str(Path(self.cfg.data_dir) / "PLAN.md")
+        prompt = PLANNER.format(goal=goal, plan_path=plan_path)
         if self.cfg.verbosity >= 3:
             print(f"\n{'=' * 60}\nPLANNER PROMPT:\n{'=' * 60}\n{prompt}\n{'=' * 60}\n")
         try:

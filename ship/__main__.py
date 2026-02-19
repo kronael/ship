@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import fcntl
 import logging
 import signal
 import sys
@@ -21,6 +22,16 @@ SPEC_CANDIDATES = ["SPEC.md", "spec.md"]
 
 
 VERSION = "0.6.1"
+
+
+def _spec_slug(context: tuple[str, ...]) -> str | None:
+    """derive a slug from a single .md file arg, or None"""
+    if len(context) != 1:
+        return None
+    p = Path(context[0])
+    if p.suffix == ".md" and not p.is_dir():
+        return p.stem
+    return None
 
 
 def discover_spec(context: tuple[str, ...]) -> list[Path]:
@@ -92,6 +103,9 @@ async def _main(
     verbosity: int,
     use_codex: bool = False,
 ) -> None:
+    slug = _spec_slug(context)
+    data_dir_arg = f".ship/{slug}" if slug else None
+
     try:
         cfg = Config.load(
             workers=workers,
@@ -99,6 +113,7 @@ async def _main(
             max_turns=max_turns,
             verbosity=verbosity,
             use_codex=use_codex,
+            data_dir=data_dir_arg,
         )
     except RuntimeError as e:
         display.error(f"error: {e}")
@@ -120,6 +135,16 @@ async def _main(
         state = StateManager(cfg.data_dir)
     except RuntimeError as e:
         display.error(f"error: {e}")
+        sys.exit(1)
+
+    # exclusive non-blocking lock: bail if another ship owns this data_dir
+    lock_path = Path(cfg.data_dir) / "ship.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    _lock_fd = lock_path.open("w")
+    try:
+        fcntl.flock(_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        display.error(f"error: ship already running in {cfg.data_dir}")
         sys.exit(1)
 
     if cont:
@@ -172,7 +197,7 @@ async def _main(
         validation = await validator.validate(goal_text, context=inline_context)
         display.event("\033[32m✓\033[0m spec ok")
         if not validation.accept:
-            rejection_path = Path("REJECTION.md")
+            rejection_path = Path(cfg.data_dir) / "REJECTION.md"
             gaps_text = (
                 "\n".join(f"- {g}" for g in validation.gaps)
                 or "- (no details provided)"
@@ -190,15 +215,18 @@ async def _main(
                     f"error: cannot write {rejection_path}: {e}",
                 )
                 sys.exit(1)
-            display.error("error: design rejected (see REJECTION.md)")
+            display.error(
+                f"error: design rejected (see {rejection_path})"
+            )
             sys.exit(1)
 
         project_text = validation.project_md.strip()
         if project_text:
+            project_path = Path(cfg.data_dir) / "PROJECT.md"
             try:
-                Path("PROJECT.md").write_text(project_text + "\n")
+                project_path.write_text(project_text + "\n")
             except OSError as e:
-                display.error(f"error: cannot write PROJECT.md: {e}")
+                display.error(f"error: cannot write {project_path}: {e}")
                 sys.exit(1)
 
         design_file = spec_label if spec_files else "<inline>"
@@ -261,6 +289,7 @@ async def _main(
         project_context=project_context,
         verbosity=cfg.verbosity,
         use_codex=cfg.use_codex,
+        progress_path=str(Path(cfg.data_dir) / "PROGRESS.md"),
     )
     worker_list = [
         Worker(

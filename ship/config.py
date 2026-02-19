@@ -30,6 +30,7 @@ class Config:
         max_turns: int | None = None,
         verbosity: int = 1,
         use_codex: bool = False,
+        data_dir: str | None = None,
     ) -> Config:
         """load config from .env file and environment variables
 
@@ -63,10 +64,13 @@ class Config:
         if max_turns < 1:
             raise RuntimeError(f"MAX_TURNS must be positive, got {max_turns}")
 
+        resolved_data_dir = os.getenv("DATA_DIR") or data_dir or ".ship"
+        resolved_log_dir = os.getenv("LOG_DIR") or f"{resolved_data_dir}/log"
+
         return Config(
             num_workers=num_workers,
-            log_dir=os.getenv("LOG_DIR", ".ship/log"),
-            data_dir=os.getenv("DATA_DIR", ".ship"),
+            log_dir=resolved_log_dir,
+            data_dir=resolved_data_dir,
             max_turns=max_turns,
             task_timeout=task_timeout,
             verbosity=verbosity,

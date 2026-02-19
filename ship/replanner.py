@@ -19,10 +19,12 @@ class Replanner:
         state: StateManager,
         project_context: str = "",
         verbosity: int = 1,
+        progress_path: str = "PROGRESS.md",
     ):
         self.state = state
         self.project_context = project_context
         self.verbosity = verbosity
+        self.progress_path = progress_path
         self.claude = ClaudeCodeClient(
             model="sonnet",
             role="replanner",
@@ -45,11 +47,11 @@ class Replanner:
         )
 
         try:
-            progress = Path("PROGRESS.md").read_text()
+            progress = Path(self.progress_path).read_text()
         except OSError:
             progress = ""
         try:
-            plan = Path("PLAN.md").read_text()
+            plan = Path(self.progress_path).parent.joinpath("PLAN.md").read_text()
         except OSError:
             plan = ""
 
@@ -66,6 +68,7 @@ class Replanner:
             progress_section=progress_section,
             completed_summary=completed_summary,
             failed_summary=failed_summary,
+            progress_path=self.progress_path,
         )
 
         if self.verbosity >= 3:

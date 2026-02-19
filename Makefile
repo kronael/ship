@@ -1,13 +1,10 @@
 .PHONY: build test smoke clean run right image install
 
 build:
-	uv sync
+	uv sync --dev
 
 install:
 	uv tool install --editable .
-
-run:
-	uv run python -m ship
 
 test:
 	uv run pytest -v

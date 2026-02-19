@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ship.claude_code import ClaudeCodeClient, ClaudeError
@@ -70,6 +70,8 @@ class Worker:
                 context=context,
                 timeout_min=self.cfg.task_timeout // 60,
                 description=task.description,
+                plan_path=str(Path(self.cfg.data_dir) / "PLAN.md"),
+                log_path=str(Path(self.cfg.data_dir) / "LOG.md"),
             )
             if self.cfg.verbosity >= 3:
                 display.event(f"\n{'=' * 60}", min_level=3)
