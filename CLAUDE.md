@@ -72,6 +72,7 @@ config precedence: CLI args > env vars > .env file > defaults.
 - TUI sliding window: shows running tasks + next N pending (not all tasks)
 - workers read PLAN.md and CLAUDE.md before executing their task
 - execute() streams stdout line-by-line; on_progress fires on `<progress>` tags
+- `_parse_output` returns a 3-tuple `(status, followups, summary)` — not a dataclass yet
 - git diff stats (_git_head + _git_diff_stat) appended to LOG.md after each task
 - adversarial verifier: 10 challenges/round, picks 2 random, queues as tasks; deduped across rounds
 - refiner/replanner/verifier timeouts are inconclusive (retry), not treated as success; attempt counters only increment on successful calls

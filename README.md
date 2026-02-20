@@ -119,9 +119,12 @@ CLI args override env vars override .env file.
 make build    # uv sync
 make test     # unit tests (<5s, skips smoke)
 make smoke    # smoke tests (real CLI calls)
-make right    # pyright
+make right    # pyright + pytest
 make clean    # rm cache + state
 ```
+
+dev deps (pytest, pyright, pre-commit) are in `[dependency-groups] dev`
+in pyproject.toml. install with `uv sync --group dev`.
 
 ## license
 
