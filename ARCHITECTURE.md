@@ -113,6 +113,9 @@ adversarial verification (_run_adversarial_round):
 - queues selected challenges as tasks
 - deduplicates challenges across rounds
 - 3 rounds max, 3 attempts max per round
+- _adv_attempts only increments after a successful verifier call; on
+  timeout the call returns None and the judge retries next cycle without
+  consuming an attempt (timeout is inconclusive, not a pass)
 
 ### refiner
 
@@ -134,7 +137,9 @@ outputs:
 - follow-up tasks (if gaps found)
 - empty (if batch looks good)
 
-uses CodexClient, 60s timeout.
+uses CodexClient, 300s timeout. on timeout: re-raises RuntimeError; judge
+catches it, decrements refine_count, and retries next cycle (timeout is
+inconclusive, not a pass).
 
 ### replanner
 
@@ -157,7 +162,9 @@ outputs:
 
 updates PROGRESS.md with final assessment section.
 
-uses ClaudeCodeClient, sonnet model, 90s timeout.
+uses ClaudeCodeClient, sonnet model, 90s timeout. on timeout: re-raises
+RuntimeError; judge catches it, decrements replan_count, and retries next
+cycle (timeout is inconclusive, not a pass).
 
 ### state manager
 
@@ -208,6 +215,8 @@ non-tty: one line per state change.
     - update TUI sliding window
     - when all complete: refiner (if -x) → replanner → adversarial → done
 12. on judge exit: cancel workers, print failed task summary, shutdown
+13. final done/failed counts use post-run task list (includes replanned
+    tasks added during execution — total grows as new tasks are queued)
 
 ## task lifecycle
 

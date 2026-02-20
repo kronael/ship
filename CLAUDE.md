@@ -74,6 +74,8 @@ config precedence: CLI args > env vars > .env file > defaults.
 - execute() streams stdout line-by-line; on_progress fires on `<progress>` tags
 - git diff stats (_git_head + _git_diff_stat) appended to LOG.md after each task
 - adversarial verifier: 10 challenges/round, picks 2 random, queues as tasks; deduped across rounds
+- refiner/replanner/verifier timeouts are inconclusive (retry), not treated as success; attempt counters only increment on successful calls
+- final done/total count uses post-run task list — total grows as replanned tasks are added during execution
 
 ## state
 
