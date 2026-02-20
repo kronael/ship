@@ -344,7 +344,7 @@ async def _main(
         print()
 
     display.event(
-        f"done. {completed}/{total} completed"
+        f"done. {completed}/{len(final_tasks)} completed"
         + (f", {failed} failed" if failed > 0 else "")
     )
 
