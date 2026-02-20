@@ -10,7 +10,8 @@ autonomous agent orchestration. planner-worker-judge pattern.
 make build              # uv sync
 make install            # uv tool install
 make test               # pytest
-make right              # pyright + pytest
+make lint               # pre-commit run -a
+make right              # pyright only
 make clean              # rm cache + state
 ```
 
@@ -20,6 +21,7 @@ ship <file>             # ship from file
 ship <dir>              # ship from dir
 ship <arg> <arg> ...    # args as context
 ship -c                 # continue from last run
+ship -k                 # validate spec only (exit 0/1)
 ship -w 8 -t 600 -m 10 # override workers/timeout/turns
 ship -x                 # enable refiner (codex CLI critique)
 ship -v                 # verbose (-v: details, -vv: debug)
@@ -37,7 +39,7 @@ ship -h                 # help
 
 ## how it runs
 
-1. validator checks spec -> rejects to REJECTION.md or writes PROJECT.md
+1. validator checks spec -> rejects to .ship/REJECTION.md or writes PROJECT.md; result cached in .ship/validated (SHA256)
 2. planner runs once -> breaks design into tasks (with mode + worker assignment)
 3. workers pull from queue, execute via claude CLI (parallel or sequential)
 4. judge polls every 5s, updates TUI panel, retries failed tasks
@@ -58,6 +60,10 @@ config precedence: CLI args > env vars > .env file > defaults.
 
 ## shocking bits
 
+- `-k` runs validation then exits: 0=accepted, 1=rejected; writes .ship/validated cache
+- stale state (no work.json/tasks.json) is wiped silently on fresh run; real previous state prompts [c/N/q]
+- validation cache (.ship/validated) skips the LLM call entirely if spec SHA256 matches
+- rejection gaps printed to stdout at verbosity >= 1; full rejection text at >= 2
 - planner runs once at startup, not continuously
 - queue not persisted, rebuilt from pending tasks on -c
 - claude CLI called with `--permission-mode bypassPermissions` always
@@ -80,12 +86,12 @@ config precedence: CLI args > env vars > .env file > defaults.
 
 ## state
 
-`.ship/` (internal, gitignored): tasks.json, work.json, log/ship.log, log/trace.jl
+`.ship/` (internal, gitignored): tasks.json, work.json, validated, log/ship.log, log/trace.jl
 project root (LLM-visible): SPEC.md, PLAN.md, PROGRESS.md, LOG.md, PROJECT.md
 
 ## key files
 
-- `__main__.py` - entry point, click CLI, main orchestrator (v0.5.0)
+- `__main__.py` - entry point, click CLI, main orchestrator (v0.6.5)
 - `types_.py` - Task (with worker field), TaskStatus, WorkState (with execution_mode)
 - `state.py` - StateManager with asyncio.Lock
 - `config.py` - loads .env + env vars, verbosity int (0-3), use_codex bool

@@ -20,6 +20,7 @@ ship spec.txt        # specify design file
 ship specs/          # ship from specs directory
 ship "add auth"      # inline goal text
 ship -c              # continue interrupted run
+ship -k              # validate spec only (exit 0/1)
 ship -w 8            # 8 workers (default: 4)
 ship -t 1200         # 20min timeout per task (default: 2400s)
 ship -m 25           # 25 agentic turns per task (default: 50)
@@ -37,8 +38,9 @@ follow-up tasks between cycles.
 specs/*.md -> validator -> planner -> workers -> judge -> verifier -> done
 ```
 
-1. **validator** checks design quality, rejects to REJECTION.md or
-   writes PROJECT.md
+1. **validator** checks design quality. rejects to `.ship/REJECTION.md`
+   or writes PROJECT.md. caches spec SHA256 in `.ship/validated`;
+   subsequent runs skip re-validation if spec unchanged.
 2. **planner** breaks deliverables into tasks, writes PLAN.md
 3. **workers** execute tasks via claude CLI, each in its own session.
    streams stdout, parses `<progress>` tags for live status, tracks
@@ -119,11 +121,12 @@ CLI args override env vars override .env file.
 make build    # uv sync
 make test     # unit tests (<5s, skips smoke)
 make smoke    # smoke tests (real CLI calls)
-make right    # pyright + pytest
+make lint     # pre-commit run -a
+make right    # pyright only
 make clean    # rm cache + state
 ```
 
-dev deps (pytest, pyright, pre-commit) are in `[dependency-groups] dev`
+dev deps (pytest, pyright, ruff, pre-commit) are in `[dependency-groups] dev`
 in pyproject.toml. install with `uv sync --group dev`.
 
 ## license

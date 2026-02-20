@@ -24,10 +24,17 @@ reads design file(s), validates specificity using claude code CLI.
 
 outputs:
 - accept/reject decision
-- gaps list (if rejected → REJECTION.md)
+- gaps list (if rejected → .ship/REJECTION.md); gaps printed to stdout
+  at verbosity >= 1, full rejection text at >= 2
 - PROJECT.md (if accepted, clarifies goal/stack/io/constraints)
 
-uses ClaudeCodeClient, sonnet model, 60s timeout.
+caches accepted spec SHA256 in `.ship/validated`. if the spec hash
+matches on a subsequent run, validation is skipped entirely.
+
+`-k` / `--check`: run validation only, then exit 0 (accepted) or 1
+(rejected). does not plan or execute tasks.
+
+uses ClaudeCodeClient, sonnet model, 180s timeout.
 
 ### planner
 
@@ -171,6 +178,7 @@ cycle (timeout is inconclusive, not a pass).
 persists to ./.ship/ as json files (project-local):
 - tasks.json: array of all tasks with metadata + worker field
 - work.json: design_file, goal_text, execution_mode, is_complete flag
+- validated: SHA256 of last accepted spec (skips re-validation)
 - log/ship.log: structured logging
 - log/trace.jl: json-lines trace of all LLM calls
 
@@ -195,15 +203,19 @@ non-tty: one line per state change.
 
 ## data flow
 
-1. main() parses args (design file, inline text, or -c flag)
+1. main() parses args (design file, inline text, or -c/-k flags)
 2. load config (CLI args > env vars > .env > defaults)
 3. acquire ship.lock (exclusive, non-blocking) — bail if already running
 4. set display.verbosity
-5. if new run:
-   - validator.validate() checks spec
+5. if new run (not -c):
+   - if stale/rejected state with no real work: wipe silently
+   - if real previous state: prompt [c/N/q] (TTY) or wipe (non-TTY)
+   - check .ship/validated cache; skip validator if spec SHA256 matches
+   - if not cached: validator.validate() checks spec
+   - if -k: exit 0 (accepted) or 1 (rejected) after validation
    - planner.plan_once() generates tasks + mode + worker assignments
    - state.init_work() creates work state
-6. if continuation:
+6. if continuation (-c):
    - state.reset_interrupted_tasks() resets running → pending
 7. check execution mode, cap workers to 1 if sequential (unless -w overrides)
 8. populate queue from pending tasks
@@ -323,7 +335,7 @@ compared to cursor's blog post, this implementation omits:
 - multi-node coordination (single machine only)
 
 compared to cursor, this implementation adds:
-- validator stage (checks spec quality before planning)
+- validator stage (checks spec quality; cached by spec SHA256; -k to check only)
 - refiner stage (codex quick critique, opt-in)
 - replanner stage (claude deep assessment)
 - adversarial verification (challenge-based task generation after replanning)

@@ -13,7 +13,6 @@ from ship.types_ import Task, TaskStatus
 
 
 class Refiner:
-
     def __init__(
         self,
         state: StateManager,

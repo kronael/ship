@@ -57,7 +57,9 @@ class Planner:
         try:
             result, _ = await self.claude.execute(prompt, timeout=180)
             if self.cfg.verbosity >= 3:
-                print(f"\n{'=' * 60}\nPLANNER RESPONSE:\n{'=' * 60}\n{result}\n{'=' * 60}\n")
+                print(
+                    f"\n{'=' * 60}\nPLANNER RESPONSE:\n{'=' * 60}\n{result}\n{'=' * 60}\n"
+                )
             return self._parse_xml(result)
         except RuntimeError as e:
             logging.warning(f"claude parsing failed: {e}")
@@ -75,9 +77,7 @@ class Planner:
         tasks: list[Task] = []
         dep_map: list[list[int]] = []
 
-        for m in re.finditer(
-            r"<task(?=[\s>])([^>]*?)>(.*?)</task>", text, re.DOTALL
-        ):
+        for m in re.finditer(r"<task(?=[\s>])([^>]*?)>(.*?)</task>", text, re.DOTALL):
             attrs = m.group(1)
             desc = m.group(2).strip()
             if not desc or len(desc) <= 5:
@@ -89,7 +89,9 @@ class Planner:
             depends_m = re.search(r'depends="([^"]*)"', attrs)
             depends_str = depends_m.group(1) if depends_m else ""
 
-            indices = [int(p.strip()) for p in depends_str.split(",") if p.strip().isdigit()]
+            indices = [
+                int(p.strip()) for p in depends_str.split(",") if p.strip().isdigit()
+            ]
 
             tasks.append(
                 Task(

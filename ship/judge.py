@@ -113,9 +113,7 @@ class Judge:
         pending = [e for e in all_panel if e[1] is TaskStatus.PENDING]
         n = max(len(running), 1)
         display.set_tasks(running + pending[:n])
-        completed_count = sum(
-            1 for t in tasks if t.status is TaskStatus.COMPLETED
-        )
+        completed_count = sum(1 for t in tasks if t.status is TaskStatus.COMPLETED)
         display.set_global(completed_count, len(tasks))
 
         if self.refine_count > 0:
@@ -136,7 +134,11 @@ class Judge:
         pending = sum(1 for t in tasks if t.status is TaskStatus.PENDING)
         failed = sum(1 for t in tasks if t.status is TaskStatus.FAILED)
         write_progress_md(
-            total, completed, running, pending, failed,
+            total,
+            completed,
+            running,
+            pending,
+            failed,
             [f"{k}: {v}" for k, v in sorted(self.worker_tasks.items())],
             path=self.progress_path,
         )
@@ -173,8 +175,7 @@ class Judge:
         )
 
         display.event(
-            f"  adversarial round {self.adv_round + 1}"
-            f"/{self.max_adv_rounds}..."
+            f"  adversarial round {self.adv_round + 1}/{self.max_adv_rounds}..."
         )
 
         try:
@@ -264,20 +265,17 @@ class Judge:
                         cascaded = await self.state.cascade_failure(task.id)
                         if cascaded:
                             log_entry(
-                                f"cascade: {task.id[:8]}"
-                                f" -> {len(cascaded)} tasks"
+                                f"cascade: {task.id[:8]} -> {len(cascaded)} tasks"
                             )
                             display.event(
-                                f"  cascade {task.id[:8]}"
-                                f" -> {len(cascaded)} deps"
+                                f"  cascade {task.id[:8]} -> {len(cascaded)} deps"
                             )
                         continue
                     await self.state.retry_task(task.id)
                     await self.queue.put(task)
                     log_entry(f"retry: {task.description[:50]}")
                     display.event(
-                        f"  retry {task.id[:8]}"
-                        f" ({task.retries + 1}/{MAX_RETRIES})"
+                        f"  retry {task.id[:8]} ({task.retries + 1}/{MAX_RETRIES})"
                     )
 
                 if self._adv_task_ids:
@@ -285,10 +283,7 @@ class Judge:
                     if outcome == "pending":
                         continue
                     if outcome == "fail":
-                        display.event(
-                            "  verification found gaps"
-                            " — re-checking..."
-                        )
+                        display.event("  verification found gaps — re-checking...")
                         log_entry("adv fail: resetting")
                         self._adv_task_ids.clear()
                         self._seen_challenges.clear()
@@ -306,10 +301,7 @@ class Judge:
                     )
                     if self.adv_round >= self.max_adv_rounds:
                         display.clear_status()
-                        display.event(
-                            "  all verified"
-                            " — no issues found"
-                        )
+                        display.event("  all verified — no issues found")
                         logging.info("goal satisfied (verification clean)")
                         await self.state.mark_complete()
                         return
@@ -369,10 +361,7 @@ class Judge:
                     continue  # timed out, retry next cycle
                 if gave_up:
                     display.clear_status()
-                    display.event(
-                        "  all verified"
-                        " — no issues found"
-                    )
+                    display.event("  all verified — no issues found")
                     logging.info("goal satisfied (verification clean)")
                     await self.state.mark_complete()
                     return

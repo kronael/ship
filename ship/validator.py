@@ -48,9 +48,7 @@ class Validator:
             print(prompt)
             print(f"{'=' * 60}\n")
 
-        result, _ = await self.claude.execute(
-            prompt, timeout=180
-        )
+        result, _ = await self.claude.execute(prompt, timeout=180)
 
         if self.verbosity >= 3:
             print(f"\n{'=' * 60}")

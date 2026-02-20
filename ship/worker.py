@@ -65,7 +65,9 @@ class Worker:
         progress_log: list[str] = []
 
         try:
-            context = f"Project: {self.project_context}\n\n" if self.project_context else ""
+            context = (
+                f"Project: {self.project_context}\n\n" if self.project_context else ""
+            )
             prompt = WORKER.format(
                 context=context,
                 timeout_min=self.cfg.task_timeout // 60,
@@ -115,12 +117,8 @@ class Worker:
                     followups=followups,
                 )
                 log_entry(f"partial: {task.description[:60]}")
-                display.event(
-                    f"  [{self.worker_id}] partial", min_level=2
-                )
-                logging.warning(
-                    f"{self.worker_id} partial: {task.description}"
-                )
+                display.event(f"  [{self.worker_id}] partial", min_level=2)
+                logging.warning(f"{self.worker_id} partial: {task.description}")
                 return
 
             await self.state.update_task(
@@ -219,7 +217,9 @@ class Worker:
         """snapshot current HEAD"""
         try:
             proc = await asyncio.create_subprocess_exec(
-                "git", "rev-parse", "HEAD",
+                "git",
+                "rev-parse",
+                "HEAD",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,
             )
@@ -234,7 +234,10 @@ class Worker:
             return ""
         try:
             proc = await asyncio.create_subprocess_exec(
-                "git", "diff", "--shortstat", old_head,
+                "git",
+                "diff",
+                "--shortstat",
+                old_head,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,
             )

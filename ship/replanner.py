@@ -13,7 +13,6 @@ from ship.types_ import Task, TaskStatus
 
 
 class Replanner:
-
     def __init__(
         self,
         state: StateManager,
@@ -57,7 +56,8 @@ class Replanner:
 
         progress_section = (
             f"PROGRESS.md (includes per-task judgments):\n{progress[:1500]}"
-            if progress else ""
+            if progress
+            else ""
         )
         plan_section = f"PLAN.md:\n{plan[:1000]}" if plan else ""
 

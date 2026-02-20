@@ -134,10 +134,7 @@ class StateManager:
     ) -> None:
         async with self.lock:
             if task_id not in self.tasks:
-                logging.warning(
-                    f"attempted to update non-existent"
-                    f" task: {task_id}"
-                )
+                logging.warning(f"attempted to update non-existent task: {task_id}")
                 return
 
             task = self.tasks[task_id]
@@ -155,10 +152,7 @@ class StateManager:
             if followups:
                 task.followups = followups
 
-            if (
-                old_status is not TaskStatus.RUNNING
-                and status is TaskStatus.RUNNING
-            ):
+            if old_status is not TaskStatus.RUNNING and status is TaskStatus.RUNNING:
                 task.started_at = datetime.now()
 
             if status in [TaskStatus.COMPLETED, TaskStatus.FAILED]:
@@ -209,9 +203,7 @@ class StateManager:
             task.completed_at = None
             self._save_tasks()
 
-    async def cascade_failure(
-        self, task_id: str
-    ) -> list[str]:
+    async def cascade_failure(self, task_id: str) -> list[str]:
         """recursively mark tasks depending on task_id as FAILED
 
         if A->B->C, failing A cascades to B and C.
@@ -222,18 +214,12 @@ class StateManager:
             while queue:
                 failed_id = queue.pop(0)
                 for task in self.tasks.values():
-                    if (
-                        failed_id in task.depends_on
-                        and task.status in (
-                            TaskStatus.PENDING,
-                            TaskStatus.RUNNING,
-                        )
+                    if failed_id in task.depends_on and task.status in (
+                        TaskStatus.PENDING,
+                        TaskStatus.RUNNING,
                     ):
                         task.status = TaskStatus.FAILED
-                        task.error = (
-                            f"cascade: dependency"
-                            f" {failed_id[:8]} failed"
-                        )
+                        task.error = f"cascade: dependency {failed_id[:8]} failed"
                         task.completed_at = datetime.now()
                         cascaded.append(task.id)
                         queue.append(task.id)
