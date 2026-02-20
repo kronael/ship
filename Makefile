@@ -13,7 +13,7 @@ smoke:
 	uv run pytest -v -m smoke
 
 lint:
-	uvx pre-commit run -a
+	uv run pre-commit run -a
 
 right:
 	uv run pyright ship/
