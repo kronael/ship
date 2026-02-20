@@ -1,4 +1,5 @@
 """Unit tests for planner, worker parse, state cascade, adversarial"""
+
 from __future__ import annotations
 
 import asyncio
@@ -7,6 +8,8 @@ from unittest.mock import patch
 
 import pytest
 
+from ship.claude_code import ClaudeCodeClient
+from ship.claude_code import ClaudeError
 from ship.config import Config
 from ship.judge import Judge
 from ship.judge import is_cascade_error
@@ -129,9 +132,7 @@ async def test_parse_design_success(planner):
 </tasks>
 </project>"""
 
-    planner.claude.execute = AsyncMock(
-        return_value=(xml_response, "sess-1")
-    )
+    planner.claude.execute = AsyncMock(return_value=(xml_response, "sess-1"))
 
     context, tasks, _ = await planner._parse_design(goal)
 
@@ -169,9 +170,7 @@ async def test_plan_once_with_work(planner, state):
 </tasks>
 </project>"""
 
-    planner.claude.execute = AsyncMock(
-        return_value=(xml_response, "sess-2")
-    )
+    planner.claude.execute = AsyncMock(return_value=(xml_response, "sess-2"))
 
     tasks = await planner.plan_once()
 
@@ -257,12 +256,16 @@ def test_parse_xml_depends_non_numeric(planner):
 async def test_cascade_failure_direct(tmp_path):
     state = StateManager(str(tmp_path))
     a = Task(
-        id="aaa", description="task A",
-        files=[], status=TaskStatus.FAILED,
+        id="aaa",
+        description="task A",
+        files=[],
+        status=TaskStatus.FAILED,
     )
     b = Task(
-        id="bbb", description="task B",
-        files=[], status=TaskStatus.PENDING,
+        id="bbb",
+        description="task B",
+        files=[],
+        status=TaskStatus.PENDING,
         depends_on=["aaa"],
     )
     await state.add_task(a)
@@ -282,17 +285,23 @@ async def test_cascade_failure_recursive(tmp_path):
     """A->B->C: failing A should cascade to both B and C"""
     state = StateManager(str(tmp_path))
     a = Task(
-        id="aaa", description="task A",
-        files=[], status=TaskStatus.FAILED,
+        id="aaa",
+        description="task A",
+        files=[],
+        status=TaskStatus.FAILED,
     )
     b = Task(
-        id="bbb", description="task B",
-        files=[], status=TaskStatus.PENDING,
+        id="bbb",
+        description="task B",
+        files=[],
+        status=TaskStatus.PENDING,
         depends_on=["aaa"],
     )
     c = Task(
-        id="ccc", description="task C",
-        files=[], status=TaskStatus.PENDING,
+        id="ccc",
+        description="task C",
+        files=[],
+        status=TaskStatus.PENDING,
         depends_on=["bbb"],
     )
     await state.add_task(a)
@@ -313,12 +322,16 @@ async def test_cascade_failure_recursive(tmp_path):
 async def test_cascade_skips_completed(tmp_path):
     state = StateManager(str(tmp_path))
     a = Task(
-        id="aaa", description="task A",
-        files=[], status=TaskStatus.FAILED,
+        id="aaa",
+        description="task A",
+        files=[],
+        status=TaskStatus.FAILED,
     )
     b = Task(
-        id="bbb", description="task B (already done)",
-        files=[], status=TaskStatus.COMPLETED,
+        id="bbb",
+        description="task B (already done)",
+        files=[],
+        status=TaskStatus.COMPLETED,
         depends_on=["aaa"],
     )
     await state.add_task(a)
@@ -333,9 +346,7 @@ async def test_cascade_skips_completed(tmp_path):
 
 def test_parse_output_done(config, state):
     w = Worker("w0", config, state)
-    status, followups = w._parse_output(
-        "did some work\n<status>done</status>"
-    )
+    status, followups = w._parse_output("did some work\n<status>done</status>")
     assert status == "done"
     assert followups == []
 
@@ -365,11 +376,7 @@ def test_parse_output_no_tags(config, state):
 
 def test_parse_output_empty_followups(config, state):
     w = Worker("w0", config, state)
-    text = (
-        "<status>partial</status>\n"
-        "<followups>\n"
-        "</followups>"
-    )
+    text = "<status>partial</status>\n<followups>\n</followups>"
     status, followups = w._parse_output(text)
     assert status == "partial"
     assert followups == []
@@ -416,9 +423,7 @@ def test_parse_challenges(tmp_path):
 def test_parse_challenges_empty(tmp_path):
     j = _make_judge(tmp_path)
     assert j._parse_challenges("no tags here") == []
-    assert j._parse_challenges(
-        "<challenges></challenges>"
-    ) == []
+    assert j._parse_challenges("<challenges></challenges>") == []
 
 
 @pytest.mark.asyncio
@@ -427,8 +432,10 @@ async def test_check_adv_batch_pending(tmp_path):
     await j.state.init_work("test.txt", "build something")
 
     task = Task(
-        id="adv-1", description="Verify X",
-        files=[], status=TaskStatus.PENDING,
+        id="adv-1",
+        description="Verify X",
+        files=[],
+        status=TaskStatus.PENDING,
     )
     await j.state.add_task(task)
     j._adv_task_ids = {"adv-1"}
@@ -443,8 +450,10 @@ async def test_check_adv_batch_pass(tmp_path):
     await j.state.init_work("test.txt", "build something")
 
     task = Task(
-        id="adv-1", description="Verify X",
-        files=[], status=TaskStatus.COMPLETED,
+        id="adv-1",
+        description="Verify X",
+        files=[],
+        status=TaskStatus.COMPLETED,
     )
     await j.state.add_task(task)
     j._adv_task_ids = {"adv-1"}
@@ -459,12 +468,16 @@ async def test_check_adv_batch_fail(tmp_path):
     await j.state.init_work("test.txt", "build something")
 
     t1 = Task(
-        id="adv-1", description="Verify X",
-        files=[], status=TaskStatus.COMPLETED,
+        id="adv-1",
+        description="Verify X",
+        files=[],
+        status=TaskStatus.COMPLETED,
     )
     t2 = Task(
-        id="adv-2", description="Check Y",
-        files=[], status=TaskStatus.FAILED,
+        id="adv-2",
+        description="Check Y",
+        files=[],
+        status=TaskStatus.FAILED,
         error="verification failed",
     )
     await j.state.add_task(t1)
@@ -489,30 +502,22 @@ async def test_run_adversarial_round(tmp_path):
     )
 
     with patch.object(
-        j, "_run_adversarial_round",
+        j,
+        "_run_adversarial_round",
         wraps=j._run_adversarial_round,
     ):
-        with patch(
-            "ship.judge.ClaudeCodeClient"
-        ) as mock_cls:
+        with patch("ship.judge.ClaudeCodeClient") as mock_cls:
             mock_client = AsyncMock()
-            mock_client.execute = AsyncMock(
-                return_value=(challenges_xml, "")
-            )
+            mock_client.execute = AsyncMock(return_value=(challenges_xml, ""))
             mock_cls.return_value = mock_client
 
             await j._run_adversarial_round()
 
     assert len(j._adv_task_ids) == 2
     all_tasks = await j.state.get_all_tasks()
-    adv_tasks = [
-        t for t in all_tasks
-        if t.id in j._adv_task_ids
-    ]
+    adv_tasks = [t for t in all_tasks if t.id in j._adv_task_ids]
     assert len(adv_tasks) == 2
-    assert all(
-        t.status is TaskStatus.PENDING for t in adv_tasks
-    )
+    assert all(t.status is TaskStatus.PENDING for t in adv_tasks)
 
 
 @pytest.mark.asyncio
@@ -523,8 +528,10 @@ async def test_adv_fail_resets_counts(tmp_path):
     j.replan_count = 1
 
     t = Task(
-        id="adv-1", description="Check X",
-        files=[], status=TaskStatus.FAILED,
+        id="adv-1",
+        description="Check X",
+        files=[],
+        status=TaskStatus.FAILED,
         error="found a bug",
     )
     await j.state.add_task(t)
@@ -569,13 +576,9 @@ async def test_adv_round_dedup(tmp_path):
         "</challenges>"
     )
 
-    with patch(
-        "ship.judge.ClaudeCodeClient"
-    ) as mock_cls:
+    with patch("ship.judge.ClaudeCodeClient") as mock_cls:
         mock_client = AsyncMock()
-        mock_client.execute = AsyncMock(
-            return_value=(challenges_xml, "")
-        )
+        mock_client.execute = AsyncMock(return_value=(challenges_xml, ""))
         mock_cls.return_value = mock_client
 
         # first round picks 2
@@ -612,8 +615,10 @@ async def test_check_adv_batch_missing_tasks(tmp_path):
 
     # add one task but reference two IDs
     task = Task(
-        id="adv-1", description="Verify X",
-        files=[], status=TaskStatus.COMPLETED,
+        id="adv-1",
+        description="Verify X",
+        files=[],
+        status=TaskStatus.COMPLETED,
     )
     await j.state.add_task(task)
     j._adv_task_ids = {"adv-1", "adv-missing"}
@@ -652,10 +657,6 @@ class FakeProcess:
 
     async def wait(self):
         pass
-
-
-from ship.claude_code import ClaudeCodeClient
-from ship.claude_code import ClaudeError
 
 
 @pytest.mark.asyncio
@@ -750,9 +751,7 @@ class _FakeGitProc:
 @pytest.mark.asyncio
 async def test_git_diff_stat_full(config, state):
     w = Worker("w0", config, state)
-    fake = _FakeGitProc(
-        b" 3 files changed, 120 insertions(+), 30 deletions(-)\n"
-    )
+    fake = _FakeGitProc(b" 3 files changed, 120 insertions(+), 30 deletions(-)\n")
 
     with patch(
         "asyncio.create_subprocess_exec",
@@ -766,9 +765,7 @@ async def test_git_diff_stat_full(config, state):
 @pytest.mark.asyncio
 async def test_git_diff_stat_inserts_only(config, state):
     w = Worker("w0", config, state)
-    fake = _FakeGitProc(
-        b" 1 file changed, 5 insertions(+)\n"
-    )
+    fake = _FakeGitProc(b" 1 file changed, 5 insertions(+)\n")
 
     with patch(
         "asyncio.create_subprocess_exec",
@@ -782,9 +779,7 @@ async def test_git_diff_stat_inserts_only(config, state):
 @pytest.mark.asyncio
 async def test_git_diff_stat_deletes_only(config, state):
     w = Worker("w0", config, state)
-    fake = _FakeGitProc(
-        b" 2 files changed, 10 deletions(-)\n"
-    )
+    fake = _FakeGitProc(b" 2 files changed, 10 deletions(-)\n")
 
     with patch(
         "asyncio.create_subprocess_exec",

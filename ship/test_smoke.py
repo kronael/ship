@@ -1,8 +1,7 @@
 """Smoke tests — hit real claude CLI. Run via `make smoke`."""
+
 from __future__ import annotations
 
-import asyncio
-import os
 import subprocess
 
 import pytest
@@ -10,8 +9,6 @@ import pytest
 from ship.claude_code import ClaudeCodeClient
 from ship.config import Config
 from ship.state import StateManager
-from ship.types_ import Task
-from ship.types_ import TaskStatus
 from ship.worker import Worker
 
 
@@ -20,27 +17,37 @@ from ship.worker import Worker
 async def test_worker_roundtrip(tmp_path):
     # init a git repo so _git_head / _git_diff_stat work
     subprocess.run(
-        ["git", "init"], cwd=str(tmp_path), check=True,
+        ["git", "init"],
+        cwd=str(tmp_path),
+        check=True,
         capture_output=True,
     )
     subprocess.run(
         ["git", "config", "user.email", "test@test.com"],
-        cwd=str(tmp_path), check=True, capture_output=True,
+        cwd=str(tmp_path),
+        check=True,
+        capture_output=True,
     )
     subprocess.run(
         ["git", "config", "user.name", "test"],
-        cwd=str(tmp_path), check=True, capture_output=True,
+        cwd=str(tmp_path),
+        check=True,
+        capture_output=True,
     )
     # seed commit so HEAD exists
     seed = tmp_path / "seed.txt"
     seed.write_text("seed")
     subprocess.run(
         ["git", "add", "seed.txt"],
-        cwd=str(tmp_path), check=True, capture_output=True,
+        cwd=str(tmp_path),
+        check=True,
+        capture_output=True,
     )
     subprocess.run(
         ["git", "commit", "-m", "seed"],
-        cwd=str(tmp_path), check=True, capture_output=True,
+        cwd=str(tmp_path),
+        check=True,
+        capture_output=True,
     )
 
     cfg = Config(
@@ -83,5 +90,5 @@ async def test_worker_roundtrip(tmp_path):
 
     head = await w._git_head()
     if head:
-        stat = await w._git_diff_stat(head)
+        await w._git_diff_stat(head)
         # may be empty if claude committed, that's ok
