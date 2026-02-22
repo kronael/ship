@@ -67,6 +67,8 @@ class WorkState:
     is_complete: bool = False
     project_context: str = ""  # brief description for workers
     execution_mode: str = "parallel"  # "parallel" or "sequential"
+    spec_hash: str = ""
+    override_prompt: str = ""
     started_at: datetime = field(default_factory=datetime.now)
     last_updated_at: datetime = field(default_factory=datetime.now)
 
@@ -77,6 +79,8 @@ class WorkState:
             "is_complete": self.is_complete,
             "project_context": self.project_context,
             "execution_mode": self.execution_mode,
+            "spec_hash": self.spec_hash,
+            "override_prompt": self.override_prompt,
             "started_at": self.started_at.isoformat(),
             "last_updated_at": self.last_updated_at.isoformat(),
         }

@@ -73,6 +73,10 @@ class StateManager:
                     # backwards compat
                     if "project_context" not in data:
                         data["project_context"] = ""
+                    if "spec_hash" not in data:
+                        data["spec_hash"] = ""
+                    if "override_prompt" not in data:
+                        data["override_prompt"] = ""
                     # remove old skills field if present
                     data.pop("skills", None)
                     self.work = WorkState(**data)
@@ -94,11 +98,19 @@ class StateManager:
             except OSError as e:
                 raise RuntimeError(f"failed to save work state: {e}") from e
 
-    async def init_work(self, design_file: str, goal_text: str) -> None:
+    async def init_work(
+        self,
+        design_file: str,
+        goal_text: str,
+        spec_hash: str = "",
+        override_prompt: str = "",
+    ) -> None:
         async with self.lock:
             self.work = WorkState(
                 design_file=design_file,
                 goal_text=goal_text,
+                spec_hash=spec_hash,
+                override_prompt=override_prompt,
             )
             self._save_work()
 

@@ -26,12 +26,14 @@ class Worker:
         cfg: Config,
         state: StateManager,
         project_context: str = "",
+        override_prompt: str = "",
         judge: Judge | None = None,
     ):
         self.worker_id = worker_id
         self.cfg = cfg
         self.state = state
         self.project_context = project_context
+        self.override_prompt = override_prompt
         self.judge = judge
         self.claude = ClaudeCodeClient(
             model="sonnet",
@@ -65,10 +67,15 @@ class Worker:
         progress_log: list[str] = []
 
         try:
+            override_section = (
+                f"Override instructions: {self.override_prompt}\n\n"
+                if self.override_prompt
+                else ""
+            )
             context = (
                 f"Project: {self.project_context}\n\n" if self.project_context else ""
             )
-            prompt = WORKER.format(
+            prompt = override_section + WORKER.format(
                 context=context,
                 timeout_min=self.cfg.task_timeout // 60,
                 description=task.description,

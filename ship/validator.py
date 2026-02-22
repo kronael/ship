@@ -31,12 +31,16 @@ class Validator:
         self,
         design_text: str,
         context: list[str] | None = None,
+        override_prompt: str = "",
     ) -> ValidationResult:
         context_section = ""
         if context:
             joined = "\n".join(f"- {c}" for c in context)
             context_section = f"\nAdditional context:\n{joined}\n"
-        prompt = VALIDATOR.format(
+        override_section = (
+            f"\nOverride instructions: {override_prompt}\n" if override_prompt else ""
+        )
+        prompt = override_section + VALIDATOR.format(
             design_text=design_text,
             context_section=context_section,
         )

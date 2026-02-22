@@ -34,7 +34,9 @@ class Planner:
 
         logging.info("breaking down goal into tasks")
 
-        context, tasks, mode = await self._parse_design(work.goal_text)
+        context, tasks, mode = await self._parse_design(
+            work.goal_text, override_prompt=work.override_prompt
+        )
 
         if context:
             await self.state.set_project_context(context)
@@ -49,9 +51,14 @@ class Planner:
 
         return tasks
 
-    async def _parse_design(self, goal: str) -> tuple[str, list[Task], str]:
+    async def _parse_design(
+        self, goal: str, override_prompt: str = ""
+    ) -> tuple[str, list[Task], str]:
         plan_path = str(Path(self.cfg.data_dir) / "PLAN.md")
-        prompt = PLANNER.format(goal=goal, plan_path=plan_path)
+        override_section = (
+            f"Override instructions: {override_prompt}\n\n" if override_prompt else ""
+        )
+        prompt = override_section + PLANNER.format(goal=goal, plan_path=plan_path)
         if self.cfg.verbosity >= 3:
             print(f"\n{'=' * 60}\nPLANNER PROMPT:\n{'=' * 60}\n{prompt}\n{'=' * 60}\n")
         try:
