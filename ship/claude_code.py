@@ -105,6 +105,7 @@ class ClaudeCodeClient:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             start_new_session=True,
+            limit=16 * 1024 * 1024,  # 16MB, stream-json lines can be large
         )
         self._proc = proc
 
