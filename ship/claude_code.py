@@ -92,6 +92,7 @@ class ClaudeCodeClient:
             self.permission_mode,
             "--output-format",
             "stream-json",
+            "--verbose",
         ]
         if self.max_turns is not None:
             args.extend(["--max-turns", str(self.max_turns)])
@@ -153,19 +154,17 @@ class ClaudeCodeClient:
         finally:
             self._proc = None
 
-        output = result_text
-
         if proc.returncode != 0:
             stderr_text = stderr_bytes.decode().strip()
-            error = stderr_text or output or f"exit {proc.returncode}"
+            error = stderr_text or result_text or f"exit {proc.returncode}"
             self._trace(len(prompt), 0, timeout, False)
             raise ClaudeError(
                 f"claude CLI failed (exit {proc.returncode}): {error}",
-                partial=output,
+                partial=result_text,
                 session_id=session_id,
             )
 
-        if not output:
+        if not result_text:
             raise ClaudeError(
                 "claude CLI returned empty output",
                 session_id=session_id,
@@ -174,12 +173,12 @@ class ClaudeCodeClient:
         if subtype == "error_max_turns":
             raise ClaudeError(
                 "reached max turns",
-                partial=output,
+                partial=result_text,
                 session_id=session_id,
             )
 
-        self._trace(len(prompt), len(output), timeout, True)
-        return output, session_id
+        self._trace(len(prompt), len(result_text), timeout, True)
+        return result_text, session_id
 
     async def summarize(self, session_id: str, partial: str = "") -> str:
         """resume an interrupted session and extract a progress summary"""

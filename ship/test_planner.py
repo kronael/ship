@@ -660,23 +660,28 @@ class FakeProcess:
         pass
 
 
+def _ndjson(obj: dict) -> bytes:
+    return (json.dumps(obj) + "\n").encode()
+
+
+def _result_line(text: str, sid: str = "", subtype: str = "success") -> bytes:
+    return _ndjson(
+        {"type": "result", "result": text, "session_id": sid, "subtype": subtype}
+    )
+
+
+def _assistant_line(text: str) -> bytes:
+    return _ndjson(
+        {"type": "assistant", "message": {"content": [{"type": "text", "text": text}]}}
+    )
+
+
 @pytest.mark.asyncio
 async def test_execute_streams_stdout():
     client = ClaudeCodeClient()
-    result_event = json.dumps(
-        {
-            "type": "result",
-            "result": "hello world",
-            "session_id": "s1",
-            "subtype": "success",
-        }
-    )
-    fake = FakeProcess([f"{result_event}\n".encode()])
+    fake = FakeProcess([_result_line("hello world", sid="s1")])
 
-    with patch(
-        "asyncio.create_subprocess_exec",
-        return_value=fake,
-    ):
+    with patch("asyncio.create_subprocess_exec", return_value=fake):
         output, sid = await client.execute("test prompt")
 
     assert "hello" in output
@@ -687,46 +692,15 @@ async def test_execute_streams_stdout():
 @pytest.mark.asyncio
 async def test_execute_calls_progress_callback():
     client = ClaudeCodeClient()
-    assistant1 = json.dumps(
-        {
-            "type": "assistant",
-            "message": {
-                "content": [
-                    {"type": "text", "text": "<progress>step 1 done</progress>"},
-                ]
-            },
-        }
-    )
-    assistant2 = json.dumps(
-        {
-            "type": "assistant",
-            "message": {
-                "content": [
-                    {"type": "text", "text": "<progress>step 2 done</progress>"},
-                ]
-            },
-        }
-    )
-    result_event = json.dumps(
-        {
-            "type": "result",
-            "result": "final output",
-            "session_id": "",
-            "subtype": "success",
-        }
-    )
     lines = [
-        f"{assistant1}\n".encode(),
-        f"{assistant2}\n".encode(),
-        f"{result_event}\n".encode(),
+        _assistant_line("<progress>step 1 done</progress>"),
+        _assistant_line("<progress>step 2 done</progress>"),
+        _result_line("final output"),
     ]
     fake = FakeProcess(lines)
     progress: list[str] = []
 
-    with patch(
-        "asyncio.create_subprocess_exec",
-        return_value=fake,
-    ):
+    with patch("asyncio.create_subprocess_exec", return_value=fake):
         output, _ = await client.execute(
             "test",
             on_progress=lambda msg: progress.append(msg),
@@ -739,27 +713,9 @@ async def test_execute_calls_progress_callback():
 @pytest.mark.asyncio
 async def test_execute_no_progress_without_callback():
     client = ClaudeCodeClient()
-    assistant = json.dumps(
-        {
-            "type": "assistant",
-            "message": {
-                "content": [
-                    {"type": "text", "text": "<progress>ignored</progress>"},
-                ]
-            },
-        }
-    )
-    result_event = json.dumps(
-        {
-            "type": "result",
-            "result": "output here",
-            "session_id": "",
-            "subtype": "success",
-        }
-    )
     lines = [
-        f"{assistant}\n".encode(),
-        f"{result_event}\n".encode(),
+        _assistant_line("<progress>ignored</progress>"),
+        _result_line("output here"),
     ]
     fake = FakeProcess(lines)
 
