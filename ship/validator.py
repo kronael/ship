@@ -71,26 +71,14 @@ class Validator:
         project_match = re.search(r"<project>(.*?)</project>", text, re.DOTALL)
         project_md = project_match.group(1).strip() if project_match else ""
 
-        # fallback chain for rejection without proper <gap> tags
+        # fallback: rejection without proper <gap> tags
         if not accept and not gaps:
-            # try raw text inside <gaps>...</gaps>
             gaps_block = re.search(r"<gaps>(.*?)</gaps>", text, re.DOTALL)
             if gaps_block:
-                raw = gaps_block.group(1).strip()
-                if raw:
-                    # split on bullet points or newlines
-                    for line in re.split(r"\n[-•*]\s*|\n", raw):
-                        line = line.strip().strip("-•* ")
-                        if line:
-                            gaps.append(line)
-            # try text between </decision> and <project>
-            if not gaps:
-                between = re.search(r"</decision>(.*?)<project>", text, re.DOTALL)
-                if between:
-                    fb = between.group(1).strip()
-                    if fb:
-                        gaps.append(fb)
-            # last resort: rejection must have a reason
+                for line in gaps_block.group(1).strip().splitlines():
+                    line = line.strip().strip("-*\u2022 ")
+                    if line:
+                        gaps.append(line)
             if not gaps:
                 gaps.append("rejected without explanation (LLM parse failure)")
 
