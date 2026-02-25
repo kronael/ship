@@ -32,6 +32,7 @@ class Validator:
         design_text: str,
         context: list[str] | None = None,
         override_prompt: str = "",
+        max_retries: int = 2,
     ) -> ValidationResult:
         context_section = ""
         if context:
@@ -45,17 +46,28 @@ class Validator:
             context_section=context_section,
         )
 
-        if self.verbosity >= 3:
-            sep = "=" * 60
-            print(f"\n{sep}\nVALIDATOR PROMPT:\n{sep}\n{prompt}\n{sep}\n")
+        for attempt in range(1 + max_retries):
+            if self.verbosity >= 3:
+                sep = "=" * 60
+                print(f"\n{sep}\nVALIDATOR PROMPT:\n{sep}\n{prompt}\n{sep}\n")
 
-        result, _ = await self.claude.execute(prompt, timeout=180)
+            result, _ = await self.claude.execute(prompt, timeout=180)
 
-        if self.verbosity >= 3:
-            sep = "=" * 60
-            print(f"\n{sep}\nVALIDATOR RESPONSE:\n{sep}\n{result}\n{sep}\n")
+            if self.verbosity >= 3:
+                sep = "=" * 60
+                print(f"\n{sep}\nVALIDATOR RESPONSE:\n{sep}\n{result}\n{sep}\n")
 
-        return self._parse(result)
+            parsed = self._parse(result)
+            # retry if rejected without gaps (LLM failed to explain)
+            if not parsed.accept and not parsed.gaps:
+                if attempt < max_retries:
+                    if self.verbosity >= 1:
+                        print("warning: validator rejected without gaps, retrying...")
+                    continue
+            return parsed
+
+        # exhausted retries, return last result with fallback gap
+        return parsed
 
     def _parse(self, text: str) -> ValidationResult:
         decision_match = re.search(r"<decision>(.*?)</decision>", text, re.DOTALL)
