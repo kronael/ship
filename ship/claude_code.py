@@ -181,6 +181,37 @@ class ClaudeCodeClient:
         self._trace(len(prompt), len(result_text), timeout, True)
         return result_text, session_id
 
+    async def _resume(self, session_id: str, prompt: str) -> str:
+        """resume a session with a follow-up prompt, return result text"""
+        args = [
+            "claude",
+            "--resume",
+            session_id,
+            "-p",
+            prompt,
+            "--model",
+            self.model,
+            "--permission-mode",
+            self.permission_mode,
+            "--output-format",
+            "json",
+        ]
+        proc = await asyncio.create_subprocess_exec(
+            *args,
+            cwd=self.cwd,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        async with asyncio.timeout(60):
+            out, _ = await proc.communicate()
+        raw = out.decode().strip()
+        try:
+            return json.loads(raw).get("result", raw)
+        except json.JSONDecodeError:
+            return raw
+
     async def summarize(self, session_id: str, partial: str = "") -> str:
         """resume an interrupted session and extract a progress summary"""
         context = f"\n\nYour partial output:\n{partial[:600]}" if partial else ""
@@ -196,36 +227,8 @@ class ClaudeCodeClient:
             "<task>description of remaining work</task>\n"
             "</followups>"
         )
-        args = [
-            "claude",
-            "--resume",
-            session_id,
-            "-p",
-            prompt,
-            "--model",
-            self.model,
-            "--permission-mode",
-            self.permission_mode,
-            "--output-format",
-            "json",
-        ]
         try:
-            proc = await asyncio.create_subprocess_exec(
-                *args,
-                cwd=self.cwd,
-                stdin=asyncio.subprocess.DEVNULL,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.DEVNULL,
-                start_new_session=True,
-            )
-            async with asyncio.timeout(60):
-                out, _ = await proc.communicate()
-            raw = out.decode().strip()
-            data = json.loads(raw)
-            return data.get("result", raw)
-        except json.JSONDecodeError as e:
-            raw = e.doc or ""
-            return raw
+            return await self._resume(session_id, prompt)
         except Exception as e:
             logging.warning(f"summarize failed: {e}")
             return partial or "interrupted (no summary available)"
@@ -243,36 +246,8 @@ class ClaudeCodeClient:
             "<status>partial</status>\n"
             "<followups>\n<task>remaining work description</task>\n</followups>"
         )
-        args = [
-            "claude",
-            "--resume",
-            session_id,
-            "-p",
-            prompt,
-            "--model",
-            self.model,
-            "--permission-mode",
-            self.permission_mode,
-            "--output-format",
-            "json",
-        ]
         try:
-            proc = await asyncio.create_subprocess_exec(
-                *args,
-                cwd=self.cwd,
-                stdin=asyncio.subprocess.DEVNULL,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.DEVNULL,
-                start_new_session=True,
-            )
-            async with asyncio.timeout(60):
-                out, _ = await proc.communicate()
-            raw = out.decode().strip()
-            try:
-                data = json.loads(raw)
-                return data.get("result", raw)
-            except json.JSONDecodeError:
-                return raw
+            return await self._resume(session_id, prompt)
         except Exception as e:
             logging.warning(f"reformat failed: {e}")
             return ""

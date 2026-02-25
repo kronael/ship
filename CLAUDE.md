@@ -83,7 +83,7 @@ config precedence: CLI args > env vars > .env file > defaults.
 - TUI sliding window: shows running tasks + next N pending (not all tasks)
 - workers receive spec content inline in prompt (read at dispatch time, not by agent)
 - workers read PLAN.md and CLAUDE.md before executing their task
-- execute() streams stdout line-by-line; on_progress fires on `<progress>` tags
+- execute() uses `--output-format stream-json` for real-time NDJSON progress events; 16MB stdout buffer
 - `_parse_output` returns a 3-tuple `(status, followups, summary)` — not a dataclass yet
 - git diff stats (_git_head + _git_diff_stat) appended to LOG.md after each task
 - adversarial verifier: 10 challenges/round, picks 2 random, queues as tasks; deduped across rounds
@@ -105,7 +105,7 @@ project root (LLM-visible): SPEC.md, PLAN.md, PROGRESS.md, LOG.md, PROJECT.md
 - `planner.py` - design -> tasks + mode + worker assignments via claude CLI
 - `validator.py` - rejects bad designs, writes PROJECT.md; fallback tag extraction for empty gaps
 - `worker.py` - executes tasks via ClaudeCodeClient, embeds spec content in prompt, appends git diff to LOG.md
-- `claude_code.py` - claude CLI wrapper, streams stdout, fires on_progress callbacks
+- `claude_code.py` - claude CLI wrapper, NDJSON stream-json output, on_progress callbacks
 - `codex_cli.py` - codex CLI wrapper (used by refiner)
 - `judge.py` - polling orchestrator, triggers refiner/replanner/adversarial
 - `refiner.py` - quick batch critique via codex CLI
