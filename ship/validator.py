@@ -77,4 +77,12 @@ class Validator:
         project_match = re.search(r"<project>(.*?)</project>", text, re.DOTALL)
         project_md = project_match.group(1).strip() if project_match else ""
 
+        # fallback: if rejected with no gaps, extract text after </decision>
+        if not accept and not gaps:
+            fallback = re.search(r"</decision>(.*?)<project>", text, re.DOTALL)
+            if fallback:
+                fb = fallback.group(1).strip()
+                if fb:
+                    gaps.append(fb)
+
         return ValidationResult(accept=accept, gaps=gaps, project_md=project_md)

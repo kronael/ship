@@ -515,6 +515,12 @@ async def _main(
         use_codex=cfg.use_codex,
         progress_path=str(Path(cfg.data_dir) / "PROGRESS.md"),
     )
+    # resolve spec_files label for worker context
+    if _auto_cont:
+        spec_label_for_workers = work.design_file if work else ""
+    else:
+        spec_label_for_workers = spec_label if spec_files else ""
+
     worker_list = [
         Worker(
             f"w{i}",
@@ -523,6 +529,7 @@ async def _main(
             project_context=project_context,
             override_prompt=effective_override,
             judge=judge,
+            spec_files=spec_label_for_workers,
         )
         for i in range(num_workers)
     ]

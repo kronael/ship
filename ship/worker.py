@@ -28,6 +28,7 @@ class Worker:
         project_context: str = "",
         override_prompt: str = "",
         judge: Judge | None = None,
+        spec_files: str = "",
     ):
         self.worker_id = worker_id
         self.cfg = cfg
@@ -35,6 +36,7 @@ class Worker:
         self.project_context = project_context
         self.override_prompt = override_prompt
         self.judge = judge
+        self.spec_files = spec_files
         self.claude = ClaudeCodeClient(
             model="sonnet",
             max_turns=cfg.max_turns,
@@ -75,11 +77,14 @@ class Worker:
             context = (
                 f"Project: {self.project_context}\n\n" if self.project_context else ""
             )
+            project_path = str(Path(self.cfg.data_dir) / "PROJECT.md")
             prompt = override_section + WORKER.format(
                 context=context,
                 timeout_min=self.cfg.task_timeout // 60,
                 description=task.description,
                 plan_path=str(Path(self.cfg.data_dir) / "PLAN.md"),
+                project_path=project_path,
+                spec_files=self.spec_files or "SPEC.md",
                 log_path=str(Path(self.cfg.data_dir) / "LOG.md"),
             )
             if self.cfg.verbosity >= 3:
