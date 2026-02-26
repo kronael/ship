@@ -511,6 +511,7 @@ async def _main(
                 f"to {num_workers} (only {len(pending)} tasks)"
             )
 
+    display.set_worker_count(num_workers)
     display.banner(
         f"ship v{VERSION} | {num_workers} workers"
         f" | {exec_mode} | timeout {cfg.task_timeout}s"

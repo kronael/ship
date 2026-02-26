@@ -108,11 +108,7 @@ class Judge:
 
         all_panel = [_entry(t) for t in tasks]
 
-        # sliding window: running tasks + same count of next pending
-        running = [e for e in all_panel if e[1] is TaskStatus.RUNNING]
-        pending = [e for e in all_panel if e[1] is TaskStatus.PENDING]
-        n = max(len(running), 1)
-        display.set_tasks(running + pending[:n])
+        display.set_tasks(all_panel)
         completed_count = sum(1 for t in tasks if t.status is TaskStatus.COMPLETED)
         display.set_global(completed_count, len(tasks))
 

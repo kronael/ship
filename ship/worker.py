@@ -64,6 +64,14 @@ class Worker:
         if self.judge:
             self.judge.set_worker_task(self.worker_id, task.description)
 
+        tidx, tsummary = display.task_info(task.description)
+        display.set_worker_progress(
+            self.worker_id,
+            tidx,
+            tsummary,
+            "starting\u2026",
+        )
+
         await self.state.update_task(task.id, TaskStatus.RUNNING)
 
         progress_log: list[str] = []
@@ -97,7 +105,13 @@ class Worker:
             def on_progress(msg: str) -> None:
                 display.event(
                     f"  [{self.worker_id}] {msg}",
-                    min_level=1,
+                    min_level=2,
+                )
+                display.set_worker_progress(
+                    self.worker_id,
+                    tidx,
+                    tsummary,
+                    msg,
                 )
                 progress_log.append(msg)
 
@@ -200,6 +214,7 @@ class Worker:
             logging.error(f"{self.worker_id} failed: {task.description}: {error_msg}")
 
         finally:
+            display.clear_worker(self.worker_id)
             if self.judge:
                 self.judge.clear_worker_task(self.worker_id)
 

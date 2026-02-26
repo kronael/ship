@@ -7,8 +7,24 @@ from datetime import datetime
 from ship.types_ import TaskStatus
 
 
+def _truncate(text: str, max_words: int = 8) -> str:
+    """first N words, truncated with ellipsis if needed"""
+    words = text.split()
+    if len(words) <= max_words:
+        return text
+    return " ".join(words[:max_words]) + "\u2026"
+
+
+_STATUS_ICON = {
+    TaskStatus.COMPLETED: ("\033[32m\u2713\033[0m", "\u2713"),
+    TaskStatus.FAILED: ("\033[31m\u2717\033[0m", "\u2717"),
+    TaskStatus.RUNNING: ("\033[33m\u27f3\033[0m", "\u27f3"),
+    TaskStatus.PENDING: ("\033[2m\u00b7\033[0m", "\u00b7"),
+}
+
+
 class Display:
-    """pacman-style multi-line task panel
+    """worker-centric TUI with task overview + worker panel
 
     tty: redraws panel in place using ANSI escape codes.
     non-tty: prints one line per state change.
@@ -25,6 +41,13 @@ class Display:
         self._plan_shown = False
         self._global_done: int = 0
         self._global_total: int = 0
+        # task summaries (8-word truncated)
+        self._task_summaries: list[str] = []
+        self._task_desc_to_idx: dict[str, int] = {}
+        # worker panel state
+        self._worker_count: int = 0
+        self._worker_progress: dict[str, tuple[int, str, str]] = {}
+        # task_idx, task_summary, progress_msg
 
     def banner(self, msg: str) -> None:
         """print header + separator"""
@@ -47,61 +70,66 @@ class Display:
         self._global_done = done
         self._global_total = total
 
+    def set_worker_count(self, n: int) -> None:
+        self._worker_count = n
+
+    def set_worker_progress(
+        self,
+        wid: str,
+        task_idx: int,
+        task_summary: str,
+        msg: str,
+    ) -> None:
+        self._worker_progress[wid] = (task_idx, task_summary, msg)
+
+    def clear_worker(self, wid: str) -> None:
+        self._worker_progress.pop(wid, None)
+
+    def task_info(self, desc: str) -> tuple[int, str]:
+        """return (1-based index, 8-word summary) for a task desc"""
+        idx = self._task_desc_to_idx.get(desc, -1)
+        if idx >= 0 and idx < len(self._task_summaries):
+            return idx + 1, self._task_summaries[idx]
+        return 0, _truncate(desc)
+
     def show_plan(
         self,
         tasks: list[tuple[str, TaskStatus, str, str, str]] | None = None,
     ) -> None:
-        """print the full task list once (no cursor tricks)
-
-        tasks: full list to display; falls back to self._tasks if omitted.
-        Always seeds _prev_statuses from the full list so the live window
-        doesn't emit spurious 'launched' events for already-known tasks.
-        """
+        """print the full task list once (no cursor tricks)"""
         render = tasks if tasks is not None else self._tasks
         if self.verbosity < 1 or not render:
             return
         self._plan_shown = True
 
+        # build 8-word summaries and desc->index mapping
+        self._task_summaries = [_truncate(desc) for desc, *_ in render]
+        self._task_desc_to_idx = {desc: i for i, (desc, *_) in enumerate(render)}
+
         cols = self._cols()
-        total = len(render)
-        w = len(str(total))
-        _color = {
-            TaskStatus.COMPLETED: "\033[32mdone\033[0m",
-            TaskStatus.FAILED: "\033[31mFAIL\033[0m",
-            TaskStatus.RUNNING: "\033[33m ...\033[0m",
-        }
+        w = len(str(len(render)))
         print()
-        for i, (desc, status, _worker, _summ, _err) in enumerate(render):
-            tag = f"[{i + 1:>{w}}/{total}]"
-            ind = _color.get(status, "  - ")
-            # strip ANSI for width calc (color codes add invisible chars)
-            ind_plain = {
-                TaskStatus.COMPLETED: "done",
-                TaskStatus.FAILED: "FAIL",
-                TaskStatus.RUNNING: " ...",
-            }.get(status, "  - ")
-            pre = f"  {tag} "
-            suf = f"  {ind_plain}"
-            avail = cols - len(pre) - len(suf)
-            if avail > 0 and len(desc) > avail:
-                desc = desc[: avail - 1] + "\u2026"
-            # print with colored suffix
-            print(f"{pre}{desc:<{max(avail, 0)}}  {ind}")
+        for i, (desc, status, *_rest) in enumerate(render):
+            icon_c, _ = _STATUS_ICON.get(status, ("\u00b7", "\u00b7"))
+            summary = self._task_summaries[i]
+            pre = f"  [{i + 1:>{w}}] {icon_c} "
+            avail = cols - 2 - w - 5  # approx
+            if len(summary) > avail > 0:
+                summary = summary[: avail - 1] + "\u2026"
+            print(f"{pre}{summary}")
         print()
 
-        # seed from full list so live window never shows spurious events
         self._prev_statuses = {desc: status for desc, status, *_ in render}
 
     def refresh(self) -> None:
-        """emit lines for tasks whose status changed, then summary"""
+        """redraw task list + worker panel in place"""
         if self.verbosity < 1 or not self._tasks:
             return
 
-        # non-tty: skip (event() already prints lines)
         if not self.is_tty:
             return
 
-        # emit change lines
+        # emit change lines above panel
         for desc, status, worker, summary, error in self._tasks:
             prev = self._prev_statuses.get(desc)
             if prev == status:
@@ -115,11 +143,45 @@ class Display:
                 self._print_change(f"  done: {label}")
             elif status is TaskStatus.FAILED:
                 err = error[:60] if error else ""
-                tail = f" — {err}" if err else ""
+                tail = f" \u2014 {err}" if err else ""
                 self._print_change(f"  failed: {desc[:50]}{tail}")
 
-        # overwrite summary line in place
-        # use global counts when available (window only shows running+pending)
+        # build panel lines
+        lines: list[str] = []
+        cols = self._cols()
+
+        # task section from full task list
+        n = len(self._tasks)
+        w = len(str(n))
+        for i, (desc, status, *_rest) in enumerate(self._tasks):
+            icon_c, _ = _STATUS_ICON.get(status, ("\u00b7", "\u00b7"))
+            summary = (
+                self._task_summaries[i]
+                if i < len(self._task_summaries)
+                else _truncate(desc)
+            )
+            lines.append(f"  [{i + 1:>{w}}] {icon_c} {summary}")
+
+        # blank line
+        lines.append("")
+
+        # worker section
+        wcount = self._worker_count or 1
+        for wi in range(wcount):
+            wid = f"w{wi}"
+            if wid in self._worker_progress:
+                tidx, tsummary, msg = self._worker_progress[wid]
+                # truncate progress msg
+                tag = f"[{tidx}] {tsummary}"
+                pmsg = msg[:40] if len(msg) > 40 else msg
+                avail = cols - 6 - len(tag) - 3
+                if len(pmsg) > avail > 0:
+                    pmsg = pmsg[: avail - 1] + "\u2026"
+                lines.append(f"  {wid}  {pmsg}   {tag}")
+            else:
+                lines.append(f"  \033[2m{wid}  idle\033[0m")
+
+        # summary line
         if self._global_total > 0:
             g_done = self._global_done
             g_total = self._global_total
@@ -136,20 +198,21 @@ class Display:
             parts.append(f"{run} running")
         if fail:
             parts.append(f"{fail} failed")
-        summary = f"  {', '.join(parts)}  {self._phase}"
+        lines.append(f"  {', '.join(parts)}  {self._phase}")
 
+        # erase old panel, draw new
         if self._panel_lines > 0:
             sys.stdout.write(f"\033[{self._panel_lines}A")
-        self._panel_lines = 1
-        sys.stdout.write(f"\033[K{summary}\n")
+        self._panel_lines = len(lines)
+        for line in lines:
+            sys.stdout.write(f"\033[K{line}\n")
         sys.stdout.flush()
 
     def _print_change(self, msg: str) -> None:
-        """print a change line above the summary"""
+        """print a change line above the panel"""
         if self._panel_lines > 0:
             sys.stdout.write(f"\033[{self._panel_lines}A")
             sys.stdout.write(f"\033[K{msg}\n")
-            # re-reserve summary space
             for _ in range(self._panel_lines):
                 sys.stdout.write("\n")
             sys.stdout.write(f"\033[{self._panel_lines}A")
@@ -158,14 +221,12 @@ class Display:
         sys.stdout.flush()
 
     def event(self, msg: str, min_level: int = 1) -> None:
-        """print a log line above the summary"""
+        """print a log line above the panel"""
         if self.verbosity < min_level:
             return
         if self.is_tty and self._panel_lines > 0:
-            # insert line above summary
             sys.stdout.write(f"\033[{self._panel_lines}A")
             sys.stdout.write(f"\033[K{msg}\n")
-            # rewrite summary below
             for _ in range(self._panel_lines):
                 sys.stdout.write("\n")
             sys.stdout.write(f"\033[{self._panel_lines}A")
@@ -178,7 +239,7 @@ class Display:
         print(msg, file=sys.stderr)
 
     def clear_status(self) -> None:
-        """clear the summary line"""
+        """clear the panel"""
         if self.is_tty and self._panel_lines > 0:
             sys.stdout.write(f"\033[{self._panel_lines}A")
             for _ in range(self._panel_lines):
@@ -197,6 +258,7 @@ class Display:
             sys.stdout.flush()
         self._panel_lines = 0
         self._tasks = []
+        self._worker_progress.clear()
 
     def _cols(self) -> int:
         try:
