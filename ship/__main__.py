@@ -11,7 +11,7 @@ from pathlib import Path
 
 import click
 
-from ship.claude_code import ClaudeCodeClient
+from ship.claude_code import ClaudeCodeClient, ClaudeError
 from ship.config import Config
 from ship.display import display
 from ship.judge import Judge
@@ -410,11 +410,15 @@ async def _main(
         else:
             display.event("\033[36m⟳\033[0m validating spec...")
             validator = Validator(verbosity=cfg.verbosity)
-            validation = await validator.validate(
-                goal_text,
-                context=inline_context,
-                override_prompt=override_prompt,
-            )
+            try:
+                validation = await validator.validate(
+                    goal_text,
+                    context=inline_context,
+                    override_prompt=override_prompt,
+                )
+            except ClaudeError as e:
+                display.error(f"error: validation failed: {e}")
+                sys.exit(1)
 
             if not validation.accept:
                 gaps_text = (

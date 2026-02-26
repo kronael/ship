@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from ship.claude_code import ClaudeCodeClient
+from ship.claude_code import ClaudeCodeClient, ClaudeError
 from ship.prompts import VALIDATOR
 
 
@@ -52,7 +52,17 @@ class Validator:
                 sep = "=" * 60
                 print(f"\n{sep}\nVALIDATOR PROMPT:\n{sep}\n{prompt}\n{sep}\n")
 
-            result, _ = await self.claude.execute(prompt, timeout=180)
+            try:
+                result, _ = await self.claude.execute(
+                    prompt,
+                    timeout=180,
+                )
+            except ClaudeError as e:
+                if attempt < max_retries:
+                    if self.verbosity >= 1:
+                        print(f"warning: validator failed ({e}), retrying...")
+                    continue
+                raise
 
             if self.verbosity >= 3:
                 sep = "=" * 60
@@ -65,6 +75,12 @@ class Validator:
             if attempt < max_retries and self.verbosity >= 1:
                 print("warning: validator rejected without gaps, retrying...")
 
+        if parsed is None:
+            return ValidationResult(
+                accept=False,
+                gaps=["validator failed after retries"],
+                project_md="",
+            )
         # exhausted retries, add synthetic gap
         parsed.gaps.append("rejected without explanation (LLM parse failure)")
         return parsed
