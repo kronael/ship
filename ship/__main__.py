@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import fcntl
 import hashlib
+import json
 import logging
 import shutil
 import signal
@@ -82,6 +83,46 @@ def discover_spec(context: tuple[str, ...]) -> list[Path]:
     return found
 
 
+def _dump_log(verbose: int) -> None:
+    """print transcript from trace.jl"""
+    trace = Path(".ship/log/trace.jl")
+    if not trace.exists():
+        print("no transcript found (.ship/log/trace.jl)")
+        return
+    for line in trace.read_text().splitlines():
+        if not line.strip():
+            continue
+        try:
+            e = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        ts = e.get("ts", "?")[11:19]  # HH:MM:SS
+        role = e.get("role", "?")
+        model = e.get("model", "?")
+        ok = e.get("ok", False)
+        plen = e.get("prompt_len", 0)
+        rlen = e.get("response_len", 0)
+        mark = "\033[32m✓\033[0m" if ok else "\033[31m✗\033[0m"
+        print(f"\033[1m═══ [{ts}] {role} ({model}) ═══\033[0m")
+        prompt_text = e.get("prompt", "")
+        response_text = e.get("response", "")
+        if verbose >= 1 and prompt_text:
+            trunc = prompt_text if verbose >= 2 else prompt_text[:200]
+            suffix = "..." if verbose < 2 and len(prompt_text) > 200 else ""
+            print(f"PROMPT ({plen} chars):")
+            print(f"  {trunc}{suffix}")
+        else:
+            print(f"PROMPT ({plen} chars)")
+        if verbose >= 1 and response_text:
+            trunc = response_text if verbose >= 2 else response_text[:200]
+            suffix = "..." if verbose < 2 and len(response_text) > 200 else ""
+            print(f"RESPONSE ({rlen} chars): {mark}")
+            print(f"  {trunc}{suffix}")
+        else:
+            print(f"RESPONSE ({rlen} chars): {mark}")
+        print()
+
+
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.argument("context", nargs=-1)
 @click.option(
@@ -113,6 +154,7 @@ def discover_spec(context: tuple[str, ...]) -> list[Path]:
 @click.option(
     "-x", "--codex", is_flag=True, help="enable codex refiner (off by default)"
 )
+@click.option("-l", "--log", "show_log", is_flag=True, help="dump transcript and exit")
 @click.option(
     "-p",
     "--prompt",
@@ -133,12 +175,16 @@ def run(
     verbose: int,
     quiet: bool,
     codex: bool,
+    show_log: bool,
     override_prompt: str,
 ) -> None:
     """autonomous coding agent
 
     Discovers SPEC.md by default, or pass files/dirs as args.
     """
+    if show_log:
+        _dump_log(verbose)
+        sys.exit(0)
 
     def _sigterm(signum, frame):
         raise KeyboardInterrupt()

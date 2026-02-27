@@ -123,15 +123,6 @@ class Worker:
 
             status, followups, summary = self._parse_output(result)
 
-            # if XML tags are missing, resume session and ask for them
-            if session_id and (not summary or "<status>" not in result):
-                display.event(
-                    f"  [{self.worker_id}] reformatting output...", min_level=1
-                )
-                reformatted = await self.claude.reformat(session_id)
-                if reformatted:
-                    status, followups, summary = self._parse_output(reformatted)
-
             if status == "partial":
                 await self.state.update_task(
                     task.id,
@@ -173,15 +164,8 @@ class Worker:
 
         except ClaudeError as e:
             error_msg = str(e) if str(e) else type(e).__name__
-            # attempt to resume and get a progress summary
             summary = ""
-            if e.session_id:
-                display.event(
-                    f"  [{self.worker_id}] resuming for summary...",
-                    min_level=1,
-                )
-                summary = await self.claude.summarize(e.session_id, e.partial)
-            elif e.partial:
+            if e.partial:
                 summary = e.partial
             elif progress_log:
                 summary = "progress before failure:\n" + "\n".join(

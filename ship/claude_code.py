@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import os
 import re
 import signal
@@ -93,6 +92,7 @@ class ClaudeCodeClient:
             "--output-format",
             "stream-json",
             "--verbose",
+            "--no-session-persistence",
         ]
         if self.max_turns is not None:
             args.extend(["--max-turns", str(self.max_turns)])
@@ -146,7 +146,14 @@ class ClaudeCodeClient:
             raise
         except TimeoutError:
             await self._kill_proc(proc)
-            self._trace(len(prompt), len(result_text), timeout, False)
+            self._trace(
+                len(prompt),
+                len(result_text),
+                timeout,
+                False,
+                prompt=prompt,
+                response=result_text,
+            )
             raise ClaudeError(
                 f"claude CLI timeout after {timeout}s",
                 partial=result_text,
@@ -158,7 +165,14 @@ class ClaudeCodeClient:
         if proc.returncode != 0:
             stderr_text = stderr_bytes.decode().strip()
             error = stderr_text or result_text or f"exit {proc.returncode}"
-            self._trace(len(prompt), 0, timeout, False)
+            self._trace(
+                len(prompt),
+                0,
+                timeout,
+                False,
+                prompt=prompt,
+                response=result_text,
+            )
             raise ClaudeError(
                 f"claude CLI failed (exit {proc.returncode}): {error}",
                 partial=result_text,
@@ -178,79 +192,15 @@ class ClaudeCodeClient:
                 session_id=session_id,
             )
 
-        self._trace(len(prompt), len(result_text), timeout, True)
+        self._trace(
+            len(prompt),
+            len(result_text),
+            timeout,
+            True,
+            prompt=prompt,
+            response=result_text,
+        )
         return result_text, session_id
-
-    async def _resume(self, session_id: str, prompt: str) -> str:
-        """resume a session with a follow-up prompt, return result text"""
-        args = [
-            "claude",
-            "--resume",
-            session_id,
-            "-p",
-            prompt,
-            "--model",
-            self.model,
-            "--permission-mode",
-            self.permission_mode,
-            "--output-format",
-            "json",
-        ]
-        proc = await asyncio.create_subprocess_exec(
-            *args,
-            cwd=self.cwd,
-            stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
-            start_new_session=True,
-        )
-        async with asyncio.timeout(60):
-            out, _ = await proc.communicate()
-        raw = out.decode().strip()
-        try:
-            return json.loads(raw).get("result", raw)
-        except json.JSONDecodeError:
-            return raw
-
-    async def summarize(self, session_id: str, partial: str = "") -> str:
-        """resume an interrupted session and extract a progress summary"""
-        context = f"\n\nYour partial output:\n{partial[:600]}" if partial else ""
-        prompt = (
-            f"You were interrupted before finishing your task.{context}\n\n"
-            "Summarize in 3-5 lines:\n"
-            "1. What you completed\n"
-            "2. What remains\n"
-            "3. Any errors or blockers\n\n"
-            "Then output:\n"
-            "<status>partial</status>\n"
-            "<followups>\n"
-            "<task>description of remaining work</task>\n"
-            "</followups>"
-        )
-        try:
-            return await self._resume(session_id, prompt)
-        except Exception as e:
-            logging.warning(f"summarize failed: {e}")
-            return partial or "interrupted (no summary available)"
-
-    async def reformat(self, session_id: str) -> str:
-        """resume session and request only the structured XML output tags"""
-        prompt = (
-            "Your previous response is complete. "
-            "Now emit ONLY the required structured tags — nothing else:\n\n"
-            "If the work is done:\n"
-            "<summary>3-5 word outcome</summary>\n"
-            "<status>done</status>\n\n"
-            "If work was incomplete:\n"
-            "<summary>3-5 word outcome</summary>\n"
-            "<status>partial</status>\n"
-            "<followups>\n<task>remaining work description</task>\n</followups>"
-        )
-        try:
-            return await self._resume(session_id, prompt)
-        except Exception as e:
-            logging.warning(f"reformat failed: {e}")
-            return ""
 
     @staticmethod
     async def _kill_proc(proc: asyncio.subprocess.Process) -> None:
@@ -270,7 +220,13 @@ class ClaudeCodeClient:
                 pass
 
     def _trace(
-        self, prompt_len: int, response_len: int, timeout: int, ok: bool
+        self,
+        prompt_len: int,
+        response_len: int,
+        timeout: int,
+        ok: bool,
+        prompt: str = "",
+        response: str = "",
     ) -> None:
         trace_path = Path(".ship/log/trace.jl")
         try:
@@ -283,6 +239,8 @@ class ClaudeCodeClient:
                 "response_len": response_len,
                 "timeout": timeout,
                 "ok": ok,
+                "prompt": prompt,
+                "response": response,
             }
             with open(trace_path, "a") as f:
                 f.write(json.dumps(entry) + "\n")
