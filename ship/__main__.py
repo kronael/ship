@@ -25,7 +25,7 @@ from ship.worker import Worker
 SPEC_CANDIDATES = ["SPEC.md", "spec.md"]
 
 
-VERSION = "0.6.4"
+VERSION = "0.6.6"
 
 
 def _has_real_state(data_dir: Path) -> bool:

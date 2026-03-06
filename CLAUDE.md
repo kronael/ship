@@ -101,7 +101,7 @@ project root (LLM-visible): SPEC.md, PLAN.md, PROGRESS.md, LOG.md, PROJECT.md
 
 ## key files
 
-- `__main__.py` - entry point, click CLI, main orchestrator (v0.6.6)
+- `__main__.py` - entry point, click CLI, main orchestrator
 - `types_.py` - Task (with worker field), TaskStatus, WorkState (with execution_mode, spec_hash, override_prompt)
 - `state.py` - StateManager with asyncio.Lock
 - `config.py` - loads .env + env vars, verbosity int (0-3), use_codex bool
