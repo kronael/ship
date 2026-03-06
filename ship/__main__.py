@@ -23,7 +23,7 @@ from ship.types_ import Task, TaskStatus
 from ship.validator import Validator
 from ship.worker import Worker
 
-SPEC_CANDIDATES = ["SPEC.md", "spec.md"]
+SPEC_CANDIDATES = ["SHIP.md", "ship.md", "SPEC.md", "spec.md"]
 
 
 VERSION = "0.6.4"

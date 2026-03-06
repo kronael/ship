@@ -16,7 +16,7 @@ make clean              # rm cache + state
 ```
 
 ```bash
-ship                    # auto-discover SPEC.md / spec.md / specs/*.md
+ship                    # auto-discover SHIP.md / SPEC.md / specs/*.md
 ship <file>             # ship from file
 ship <dir>              # ship from dir
 ship <arg> <arg> ...    # args as context
@@ -36,7 +36,7 @@ ship -h                 # help
 - workers: 4
 - max_turns: 50
 - task_timeout: 2400s (40min, agents told the real value)
-- spec discovery: SPEC.md > spec.md > specs/*.md
+- spec discovery: SHIP.md > ship.md > SPEC.md > spec.md > specs/*.md
 - verbosity: 1 (0=quiet, 1=default, 2=verbose, 3=debug)
 
 ## how it runs
