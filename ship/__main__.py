@@ -23,10 +23,8 @@ from ship.types_ import Task, TaskStatus
 from ship.validator import Validator
 from ship.worker import Worker
 
-SPEC_CANDIDATES = ["SHIP.md", "ship.md", "SPEC.md", "spec.md"]
 
-
-VERSION = "0.6.4"
+VERSION = "0.7.0"
 
 
 def _has_real_state(data_dir: Path) -> bool:
@@ -64,24 +62,15 @@ def _spec_slug(context: tuple[str, ...]) -> str | None:
 
 
 def discover_spec(context: tuple[str, ...]) -> list[Path]:
-    if context:
-        if len(context) == 1:
-            p = Path(context[0])
-            if p.is_file():
-                return [p]
-            if p.is_dir():
-                return sorted(p.glob("*.md"))
+    if not context:
         return []
-
-    found: list[Path] = []
-    for candidate in SPEC_CANDIDATES:
-        p = Path(candidate)
-        if p.exists():
-            found.append(p)
-    specs_dir = Path("specs")
-    if specs_dir.is_dir():
-        found.extend(sorted(specs_dir.glob("*.md")))
-    return found
+    if len(context) == 1:
+        p = Path(context[0])
+        if p.is_file():
+            return [p]
+        if p.is_dir():
+            return sorted(p.glob("*.md"))
+    return []
 
 
 def _dump_log(verbose: int) -> None:
@@ -441,7 +430,7 @@ async def _main(
             inline_context = list(context)
         else:
             display.error(
-                "error: no spec found (try SPEC.md, specs/*.md, or /planship)",
+                "error: no spec provided (usage: ship <file>)",
             )
             sys.exit(1)
 
