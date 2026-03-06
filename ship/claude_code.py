@@ -98,9 +98,11 @@ class ClaudeCodeClient:
             args.extend(["--max-turns", str(self.max_turns)])
         if self.allowed_tools:
             args.extend(["--allowedTools", " ".join(self.allowed_tools)])
+        env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
         proc = await asyncio.create_subprocess_exec(
             *args,
             cwd=self.cwd,
+            env=env,
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
